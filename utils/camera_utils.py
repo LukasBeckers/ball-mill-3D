@@ -1,156 +1,49 @@
+import cv2
+
 from utils.video_utils import *
 import json
+from collections import defaultdict
 
 
 class stereoCamera():
-    def __init__(self, camera_size=(480, 620), anchor_cam1=None, anchor_cam2=None):
-        self.cam_size = camera_size
-        self.anchor_points = {0:np.array(anchor_cam1), 1:np.array(anchor_cam2)}
-        self.fisheye = False
+    def __init__(self, name="", **kwargs):
+        """
+        Possible **kwargs are all dicts with the keys = int(camera_index) ie. 0 or 1:
 
-    def undistort_image(self, img):
+        camera_size
+        anchor_point
+        projection_error
+        camera_matrix
+        optimized_camera_matrix
+        distortion
+        """
+
+        def recursive_defaultdict():
+            return defaultdict(lambda: None)
+
+        self.conf = defaultdict(recursive_defaultdict,
+                                {key: defaultdict(lambda: None, {k: v for k, v in value.items()})
+                                 for key, value in kwargs.items()})
+
+        self.name = name
+
+    def __str__(self):
+        return self.name
+
+
+    def undistort_image(self, img, cam):
         """
         Undistorts an image using the camera_matrix and the distortion values obtained by camera calibration.
-        :param img:             Image to undistort
-        :param camera_matrix:   Camera matrix obtained by camera claibration
-        :param distortion:      Distortion parameters obtained by camera calibration.
-        :param optimized
-        _camera_matrix:         Camera matrix optimized by cv2.getOptoimalNewCameraMatrix
 
-        :return:                Undistorted image, and new camera_matrix
+        :return:                Undistorted image
         """
-        if self.fisheye:
-            img = self.undistort_fisheye(img)
-            return img
-
-        img = cv2.undistort(img, self.camera_matrix, self.distortion, None, self.optimized_camera_matrix)
+        img = cv2.undistort(img, self.conf["camera_matrix"][cam], self.conf["distortion"][cam], None,
+                            self.conf["optimized_camera_matrix"][cam])
         return img
-
-    def undistort_fisheye(self, img):
-        h, w = img.shape[:2]
-        dim = img.shape[:2][::-1]
-        # maybe I will put the distortion maps in the config files, but for now this quick and dirty fix will do.
-        # the maps are stored, because the initUndistortRectifyMap metod call takes about 0.22 seconds.
-        try:
-            map1 = self.fisheye_map1
-            map2 = self.fisheye_map2
-        except Exception:
-            map1, map2 = cv2.fisheye.initUndistortRectifyMap(self.fisheye_camera_matrix,
-                                                             self.fisheye_distortion, np.eye(3),
-                                                             self.fisheye_optimized_camera_matrix,
-                                                             [w, h],
-                                                             cv2.CV_16SC2)
-            self.fisheye_map1 = map1
-            self.fisheye_map2 = map2
-        img = cv2.remap(img, map1, map2, interpolation=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-        return img
-
-    def set_config(self, config_name, value):
-        try:
-            with open('camera_configuration.json', 'r') as json_file:
-                configurations = json.load(json_file)
-        except FileNotFoundError:
-            print("No camera configuration file found!")
-            return
-
-        # converting np arrays to lists
-        if isinstance(value, (np.ndarray, list, tuple)):
-            value = np.array(value).tolist()
-
-        # storing the config value of the camera in a JSON format.
-        configurations[self.name][config_name] = value
-
-        # saving the updated dict as JSON
-        with open('camera_configuration.json', 'w') as json_file:
-            json.dump(configurations, json_file)
-
-    def get_config(self, config_name, value):
-        try:
-            with open('camera_configuration.json', 'r') as json_file:
-                configurations = json.load(json_file)
-        except FileNotFoundError:
-            print("No camera configurations file found!")
-            return
-
-        # storing the stream of the camera in a JSON format.
-        value = configurations[self.name][config_name]
-
-        return value
-
-    def load_configs(self):
-        """
-        If a camera with the same name was already configured, there will probably be a JSON file with
-        configurations and calibrations for this setup, it will be loaded by this function.
-        """
-        try:
-            with open('camera_configuration.json', 'r') as json_file:
-                configurations = json.load(json_file)
-                self.stream = configurations[self.name]["stream"]
-                try:
-                    self.resolution  = configurations[self.name]["resolution"]
-                except KeyError: # Going with standard resolution 480 * 640.
-                    self.resolution = False
-
-                # trying to load attributes that are only added to the camera during calibration.
-                try:
-                    self.projection_error = configurations[self.name]["projection_error"]
-                    self.camera_matrix = np.array(configurations[self.name]["camera_matrix"])
-                    self.distortion = np.array(configurations[self.name]["distortion"])
-                    self.optimized_camera_matrix = np.array(configurations[self.name]["optimized_camera_matrix"])
-
-                    self.current_camera_matrix = self.optimized_camera_matrix  # gets overwritten if fisheye
-                    self.calibrated = True
-                except KeyError as E:
-                    print('Could not load all values', E)
-                    self.calibrated = False
-                # trying to load fisheye calibration
-                # fisheye calibration is optional and will only throw an error if fisheye is set to true in config.
-                # and not all params could be loaded
-                try:
-                    self.fisheye = configurations[self.name]["fisheye"]
-
-                    if self.fisheye:
-                        self.fisheye_camera_matrix = np.array(configurations[self.name]["fisheye_camera_matrix"])
-                        self.fisheye_distortion = np.array(configurations[self.name]["fisheye_distortion"])
-                        self.fisheye_optimized_camera_matrix = np.array(
-                            configurations[self.name]["fisheye_optimized_camera_matrix"])
-
-                        self.current_camera_matrix = self.fisheye_optimized_camera_matrix
-                                                                                # if the camera is fisheye calibrated
-                                                                                # the current camera matrix is
-                                                                                # overwritten by the
-                        #                                                         fisheye_camera_matrix
-                except KeyError as E:
-                    if self.fisheye:
-                     print("Error while loading fisheye calibration, maybe camera was not fisheye calibrated jet", E)
-
-            return True
-
-        except FileNotFoundError:
-            print("No camera_configuration.json file found!")
-            return False
-
 
     def calibrate(self, images, cam, rows=8, columns=10, scaling=0.005):
-        """
-        Thanks to: https://temugeb.github.io/opencv/python/2021/02/02/stereo-camera-calibration-and-triangulation.html
-
-        # Calibration for normal cameras (pin hole)
-
-        Calculates the camera matrix for a camera based on a checkerboard-pattern.
-        :param rows:        Number of rows in chessboard-pattern.
-        :param columns:     Number of columns in chessboard-pattern.
-        :param scaling:     Realworld size of a chess-board square to scale the coordinate system.
-                            I will try to keep all units in meters so a good initial value for this will be 0.01 or 1 cm
-
-        :n_images:          Number of photos that will be taken for calibration.
-        :param fisheye:     Indicates if fisheye calibration should be used before normal calibration. Config value is
-                            used by default
-        :return:
-        """
 
         images = [self(img)[cam] for img in images]
-        print("Len Images", len(images))
 
         # Only chessboard corners with all four sides being squares can be detected. (B W) Therefore the detectable
         # chessboard is one smaller in number of rows and columns.                   (W B)
@@ -171,43 +64,81 @@ class stereoCamera():
         objpoints = []
 
         for i, img in enumerate(images):
-            print(i)
             img_old = np.array(img)
+            factor = 4
 
-            cv2.imshow(f'Camera: {self}', img)
-            k = cv2.waitKey(0)
+            img = cv2.resize(img, np.array(img.shape[:2])[::-1] * factor)
 
-            gray = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+            try:
+                _ = self.cutout_corners
+            except AttributeError:
+                self.cutout_corners = []
+
+            global cutout_corners
+            cutout_corners = []
+            def mouse_callback(event, x, y, flags, param):
+                global cutout_corners
+                if event == cv2.EVENT_LBUTTONDOWN:
+                    cutout_corners.append((x, y))
+                    print("Left mouse button pressed!", cutout_corners)
+
+            while len(self.cutout_corners) < 2:
+                cv2.imshow(f'Camera: {cam}', img)
+                cv2.setMouseCallback(f"Camera: {cam}", mouse_callback)
+                cv2.waitKey(0)
+                if len(cutout_corners) >=  2:
+                    self.cutout_corners = cutout_corners
+                    cv2.destroyWindow(f"Camera: {cam}")
+
+            cutout_corners = self.cutout_corners
+            cc_arr = np.array(cutout_corners[-2:], dtype=np.int32)
+
+            img = img[cc_arr[:, 1].min() : cc_arr[:, 1].max(), cc_arr[:,0].min() : cc_arr[:,0].max()]
+            offset = cc_arr.min(axis=0)
+
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+
+            cv2.imshow("Cutout", img)
+            cv2.waitKey(0)
+            cv2.destroyWindow("Cutout")
+
+            gray = img
             # localizing the chessboard corners in image-space.
             ret, corners = cv2.findChessboardCorners(gray, (rows, columns), None)
             print("ret", ret)
             if ret:
                 # trying to improve the detection of the chessboard corners!
-                corners = cv2.cornerSubPix(gray,
-                                                       corners,
-                                                       (11, 11),  # size of kernel!
-                                                       (-1, -1),
-                                                       criteria)
-                cv2.drawChessboardCorners(img, (rows, columns), corners, ret)
-                for i, [corner] in enumerate(corners): # Check if enumeration is consistent
-                    cv2.putText(img, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
-                                            (0, 0, 255), 1)
+                corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
+                # adjusting the corner coordinates for the scaling and the cutout
+                corners = np.array([(np.array(coord) + offset) / factor for (coord) in corners], dtype=np.float32)
+
+                img = np.array(img_old)
+                # resizing again to properly display the corners
+                img = cv2.resize(img, np.array(img.shape[:2])[::-1] * factor)
+                cv2.drawChessboardCorners(img, (rows, columns), corners*factor, ret)
+                for i, [corner] in enumerate(corners):
+                    cv2.putText(img, f'{i}', (int(corner[0]*factor), int(corner[1])*factor), cv2.FONT_HERSHEY_COMPLEX,
+                                1, (0, 0, 255), 1)
+
                 cv2.imshow(f'Chessboard corners; Camera: {self}', img)
                 key = cv2.waitKey(0)
-                if key & 0xFF == ord('s'):  # press s to switch the ordering of the corners
+                if key & 0xFF == ord('s'):  # press "s" to switch the ordering of the corners
                     cv2.destroyWindow(f'Chessboard corners; Camera: {self}')
                     corners = corners[::-1]
+
                     # drawing the new corners
-                    cv2.drawChessboardCorners(img_old, (rows, columns), corners, ret)
-                    for i, [corner] in enumerate(corners):  # Check if enumeration is consistent
-                        cv2.putText(img_old, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
-                                                (0, 0, 255), 1)
-                    cv2.imshow(f'Chessboard corners; Camera: {self}', img_old)
+                    img = np.array(img_old)
+                    img = cv2.resize(img, np.array(img.shape[:2])[::-1] * factor)
+                    cv2.drawChessboardCorners(img, (rows, columns), corners*factor, ret)
+                    for i, [corner] in enumerate(corners):
+                        cv2.putText(img, f'{i}', (int(corner[0] * factor), int(corner[1]) * factor),
+                                    cv2.FONT_HERSHEY_COMPLEX, 1,
+                                    (0, 0, 255), 1)
+                    cv2.imshow(f'Chessboard corners; Camera: {self}', img)
                     cv2.waitKey(0)
                     cv2.destroyWindow(f'Chessboard corners; Camera: {self}')
-                    objpoints.append(objp)
-                    imgpoints.append(corners)
-
+                objpoints.append(objp)
+                imgpoints.append(corners)
 
         height = img.shape[0]
         width = img.shape[1]
@@ -223,70 +154,256 @@ class stereoCamera():
         print('optimized camera matrix:\n', optimized_camera_matrix)
         print('distortion coeffs:\n', dist)
 
-        self.projection_error = ret
-        self.camera_matrix = mtx
-        self.optimized_camera_matrix = optimized_camera_matrix
-        self.distortion = dist
-
-        # Updating the camera_configuration.json file
-        self.set_config(f"projection_error_{cam}", self.projection_error)
-        self.set_config(f"camera_matrix_{cam}", self.camera_matrix)
-        self.set_config(f"distortion_{cam}", self.distortion)
-        self.set_config(f"optimized_camera_matrix_{cam}", self.optimized_camera_matrix)
+        self.conf["projection_error"][cam] = ret
+        self.conf["camera_matrix"][cam] = mtx
+        self.conf["optimized_camera_matrix"][cam] = optimized_camera_matrix
+        self.conf["distortion"][cam] = dist
 
         # closing the window after calibration
-        cv2.destroyWindow(f'Camera: {self}')
-        self.calibrated = True
         cv2.destroyAllWindows()
         return
 
+    def stero_calibrate(self, images, rows=7, columns=9, scaling=0.005):
+        """
+
+        """
+        assert self.conf["camera_matrix"][0] is not None and self.conf["camera_matrix"][1] is not None, \
+            "Calibrate both cameras first!"
+
+        def draw_lines(img):
+            global line # line = (x1, y1, x2, y2)
+            line = []
+            lines = []
+            def mouse_callback(event, x, y, flags, param):
+                global line
+                if event == cv2.EVENT_LBUTTONDOWN:
+                    line.extend((x, y))
+                    print("Current line:", line)
+                if event == cv2.EVENT_RBUTTONDOWN:
+                    line.pop()
+                    line.pop()
+                    print("Removing last point. Line:", line)
+
+
+            img_old = np.array(img)
+            while True:
+                cv2.imshow("Drawing Lines", img)
+                cv2.setMouseCallback("Drawing Lines", mouse_callback)
+                key = cv2.waitKey(1)
+                if key & 0xFF == ord('r'):
+                    print("Removing last line")
+                    lines.pop()
+                    img = np.array(img_old)
+                    for l in lines:
+                        cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
+
+                if key & 0xFF == 27:
+                    print("Escaping Line drawing")
+                    break
+                if len(line) == 4:
+                    lines.append(line)
+                    line = []
+                    img = np.array(img_old)
+                    for l in lines:
+                        cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
+                    print("Line drawn")
+
+            return img_old, lines
+
+        # open cv can only detect inner corners, so reducing the rows and columns by one
+        rows -= 1
+        columns -= 1
+
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.0001)
+
+        # coordinates of squares in the checkerboard world space
+        objp = np.zeros((rows * columns, 3), np.float32)
+        objp[:, :2] = np.mgrid[0:rows, 0:columns].T.reshape(-1, 2)
+        objp = scaling * objp
+
+        # Pixel coordinates in image space of checkerboard
+        imgpoints_1 = []
+        imgpoints_2 = []
+
+        # World coordinates of the checkerboard. (World coordinate system has its origin in the bottom left corner of
+        # the checkerboard.
+        objpoints = []
+
+        for img in images:
+            img1, img2 = self(img)
+            img1_old = np.array(img1)
+            img2_old = np.array(img2)
+            height, width = img1.shape[:2]
+
+            factor = 4
+
+            img1 = cv2.resize(img1, np.array(img1.shape[:2])[::-1] * factor)
+            img2 = cv2.resize(img2, np.array(img2.shape[:2])[::-1] * factor)
+
+            img1, lines1 = draw_lines(img1)
+            img2, lines2 = draw_lines(img2)
+
+            img1 = cv2.cvtColor(img1, cv2.COLOR_BGRA2GRAY)
+            img2 = cv2.cvtColor(img2, cv2.COLOR_BGRA2GRAY)
+
+            # counting the number of successful detections
+            cv2.putText(img1, f'{len(imgpoints_1)}', (20, 20), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 255), 1)
+            cv2.putText(img2, f'{len(imgpoints_2)}', (20, 20), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 255, 255), 1)
+
+            # Displaying the images
+            cv2.imshow(f"Camera 1", img1)
+            cv2.imshow(f"Camera 2", img2)
+            key = cv2.waitKey(1)
+            cv2.destroyWindow("Camera 1")
+            cv2.destroyWindow("Camera 2")
+            print("Key", key)
+            if key == 27:  # esc stops the calibration process
+                print("Aborting stereo calibration.")
+                return
+            # press any key except esc to take the frame for calibration
+            else:
+                #img1 = cv2.convertScaleAbs(img1, alpha=1, beta=100)
+                #img2 = cv2.convertScaleAbs(img2, alpha=1, beta=100)
+                _, img1 = cv2.threshold(img1, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                _, img2 = cv2.threshold(img2, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                cv2.imshow("img1", img1)
+                cv2.imshow("img2", img1)
+                cv2.waitKey(0)
+                cv2.destroyWindow("img1")
+                cv2.destroyWindow("img2")
+
+                edges1 = cv2.Canny(img1, 50, 150, apertureSize=5)
+                edges2 = cv2.Canny(img2, 50, 150, apertureSize=5)
+
+                cv2.imshow("Edges1", edges1)
+                cv2.imshow("Edges2", edges2)
+                cv2.waitKey(0)
+                cv2.destroyWindow("Edges1")
+                cv2.destroyWindow("Edges2")
+                lines1 = cv2.HoughLinesP(edges1, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=10)
+                lines2 = cv2.HoughLinesP(edges2, 1, np.pi/180, threshold=100, minLineLength=100, maxLineGap=10)
+                print("Lines1", lines1, np.array(lines1).shape)
+                print("Lines2", lines2, np.array(lines2).shape)
+                # Refining the detection
+                #corners1 = cv2.cornerSubPix(img1, corners1, (11, 11), (-1, -1), criteria)
+                #corners2 = cv2.cornerSubPix(img2, corners2, (11, 11), (-1, -1), criteria)
+                # Showing the detection
+
+                for line in lines1:
+                    x1, y1, x2, y2 = line[0]
+                    cv2.line(img1, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                for line in lines2:
+                    x1, y1, x2, y2 = line[0]
+                    cv2.line(img2, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+                #for i, [corner] in enumerate(corners1):
+                #    cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
+                #                (0, 0, 255), 1)
+                #for i, [corner] in enumerate(corners2):
+                #    cv2.putText(img2, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
+                #                (0, 0, 255), 1)
+                cv2.imshow(f'Detection 1', img1)
+                cv2.imshow(f'Detection 2', img2)
+                key = cv2.waitKey(0)
+
+                if key & 0xFF == ord('s'):  # press s to switch ordering of img1
+                    cv2.destroyWindow(f'Detection {self.cameras[0]}')
+                    corners1 = corners1[::-1]
+                    # drawing the new corners
+                    cv2.drawChessboardCorners(img_old, (rows, columns), corners1, True )
+                    for i, [corner] in enumerate(corners1):
+                        cv2.putText(img_old, f'{i}', (int(corner[0]), int(corner[1])),
+                                    cv2.FONT_HERSHEY_COMPLEX,
+                                    1,
+                                    (0, 0, 255), 1)
+                    cv2.imshow(f'Detection {self.cameras[0]}', img_old)
+                    cv2.waitKey(0)
+                    # storing the realworld/ image-space coordinate pairs
+                    objpoints.append(objp)
+                    imgpoints_1.append(corners1)
+                    imgpoints_2.append(corners2)
+                    cv2.destroyWindow(f'Detection {self.cameras[0]}')
+                    cv2.destroyWindow(f'Detection {self.cameras[1]}')
+
+                # press any other key (except esc) to use the detection
+                elif key > 0:
+                    # storing the realworld/ image-space coordinate pairs
+                    objpoints.append(objp)
+                    imgpoints_1.append(corners1)
+                    imgpoints_2.append(corners2)
+                    cv2.destroyWindow(f'Detection {self.cameras[0]}')
+                    cv2.destroyWindow(f'Detection {self.cameras[1]}')
+        # prerform stereo calibration on accumulated objectpoints
+        stereocalibration_flags = cv2.CALIB_FIX_INTRINSIC
+
+
+        ret, CM1, dist1, CM2, dist2, R, T, E, F = cv2.stereoCalibrate(objpoints,
+                                                                      imgpoints_1,
+                                                                      imgpoints_2,
+                                                                      self.cameras[0].camera_matrix,
+                                                                      self.cameras[0].distortion,
+                                                                      self.cameras[1].camera_matrix,
+                                                                      self.cameras[1].distortion,
+                                                                      (width, height),
+                                                                      criteria=criteria,
+                                                                      flags=stereocalibration_flags)
+
+        # Matrix that rotates the coordinate system of the second camera to match the first.
+        self.rotation_matrix = R
+        # Matrix that translates the coordinate system of the second camera to match the first.
+        self.translation_matrix = T
+
+        print(f'Stereo-calibration error: {ret}')
+        print(f'Translation Matrix: {T}')
+        print(f'Rotation Matrix: {R}')
+
+        self.set_config("stereo_calibration_error", ret)
+        self.set_config("translation_matrix", T)
+        self.set_config("rotation_matrix", R)
+
+        cv2.destroyAllWindows()
+        return
 
     def set_anchor_point(self, img, cam):
         """
         img: frame from Video
         cam: number of camera for which to set the anchor-point (0 or 1)
         """
-        global anchor_point
         def mouse_callback(event, x, y, flags, param):
             global anchor_point
             if event == cv2.EVENT_LBUTTONDOWN:
                 anchor_point = (x, y)
                 print("Left mouse button pressed!", anchor_point)
+
         win_name = "Set Anchor Point" + str(cam)
         cv2.imshow(win_name, img)
         cv2.setMouseCallback(win_name, mouse_callback)
         cv2.waitKey(0)
-        self.anchor_points[cam] = anchor_point
+        self.conf[f"anchor_points"][cam] = anchor_point
         cv2.destroyWindow(win_name)
-
 
     def draw_camera_region(self, img):
 
-        # Drawing camera 0
-        anchor_point = np.array(self.anchor_points[0])
-        start_point = anchor_point - np.array(self.cam_size)/2
-        end_point = anchor_point + np.array(self.cam_size)/2
-        img = cv2.rectangle(img,  start_point.astype(np.int32), end_point.astype(np.int32), (255, 0, 0), 5)
-
-        # Drawing camera 1
-        anchor_point = np.array(self.anchor_points[1])
-        start_point = anchor_point - np.array(self.cam_size) / 2
-        end_point = anchor_point + np.array(self.cam_size) / 2
-        img = cv2.rectangle(img, start_point.astype(np.int32), end_point.astype(np.int32), (255, 0, 0), 5)
+        for anchor_point in self.conf["anchor_point"].values():
+            # Drawing camera
+            start_point = anchor_point - np.array(self.conf["camera_size"][0])/2
+            end_point = anchor_point + np.array(self.conf["camera_size"][0])/2
+            img = cv2.rectangle(img,  start_point.astype(np.int32), end_point.astype(np.int32), (255, 0, 0), 5)
 
         return img
 
     def __call__(self, image):
 
         # Camera0
-        anchor_point0 = np.array(self.anchor_points[0])
-        start_point0 = anchor_point0 - np.array(self.cam_size) / 2
-        end_point0 = anchor_point0 + np.array(self.cam_size) / 2
+        anchor_point0 = np.array(self.conf["anchor_point"][0])
+        start_point0 = anchor_point0 - np.array(self.conf["camera_size"][0]) / 2
+        end_point0 = anchor_point0 + np.array(self.conf["camera_size"][0]) / 2
 
         # Camera 1
-        anchor_point1 = np.array(self.anchor_points[1])
-        start_point1 = anchor_point1 - np.array(self.cam_size) / 2
-        end_point1 = anchor_point1 + np.array(self.cam_size) / 2
+        anchor_point1 = np.array(self.conf["anchor_point"][1])
+        start_point1 = anchor_point1 - np.array(self.conf["camera_size"][0]) / 2
+        end_point1 = anchor_point1 + np.array(self.conf["camera_size"][0]) / 2
 
         # checking for negative values and adjusting the anchor size
         for i, val in enumerate(start_point0):
@@ -305,24 +422,41 @@ class stereoCamera():
         return frame0, frame1
 
 if __name__=="__main__":
-    sC = stereoCamera(camera_size=(400, 250), anchor_cam1=(764, 136), anchor_cam2=(735, 324))
 
+    sC = stereoCamera(camera_size={0:(300, 150), 1:(300, 150)},
+                      anchor_point={0:(587, 269), 1:(598, 433)},
+                      camera_matrix={0:np.array([[2.24579312e+03, 0.00000000e+00, 6.06766474e+02],
+                                                 [0.00000000e+00, 3.18225724e+03, 2.87228912e+02],
+                                                 [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
+                                    1:np.array([[9.17450924e+02, 0.00000000e+00, 5.97492459e+02],
+                                                [0.00000000e+00, 1.08858369e+03, 2.96145751e+02],
+                                                [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])},
+                      optimized_camera_matrix={0:np.array( [[1.98885152e+03, 0.00000000e+00, 5.83904948e+02],
+                                                           [0.00000000e+00, 2.71756632e+03, 3.41261625e+02],
+                                                           [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
+                                               1:np.array([[9.35319179e+02, 0.00000000e+00, 5.90025655e+02],
+                                                          [0.00000000e+00, 1.09136910e+03, 2.97696817e+02],
+                                                          [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])},
+                      projection_error={0: 0.26768362133770185, 1: 0.29408707559840946},
+                      distortion={
+                          0:np.array([[-1.53486495e+00,  1.95803727e+01,  1.63594781e-01, -2.81574724e-02, -1.10093707e+02]]),
+                          1:np.array([[ 0.03667417,  0.10305058,  0.00557331, -0.00655738,-0.16404791]])})
     vL = videoLoader()
-    vL.load_video("../videos/VID-20240329-WA0015.mp4", start_frame=100, end_frame=-100)
-    frame = vL[10]
+    vL.load_video("../videos/WhatsApp Video 2024-03-29 at 19.14.15 (2).mp4", start_frame=100, end_frame=-100)
+    #frame = vL[10]
     #sC.set_anchor_point(frame, 0)
     #sC.set_anchor_point(frame, 1)
-
-    frames = vL[:10]
+    frames = vL[:2]
 
     for frame in frames[:1]:
-        print(sC.anchor_points)
-        #frame = sC.draw_camera_region(frame)
-        #cv2.imshow("Frame", frame)
+        frame = sC.draw_camera_region(frame)
+        cv2.imshow("Frame", frame)
         frame0, frame1 = sC(frame)
         cv2.imshow("frame0", frame0)
         cv2.imshow("frame1", frame1)
         cv2.waitKey(0)
+    cv2.destroyAllWindows()
 
-    sC.calibrate(frames, 0)
-    sC.calibrate(frames, 1)
+    #sC.calibrate(frames, 0)
+    #sC.calibrate(frames, 1)
+    sC.stero_calibrate(frames)
