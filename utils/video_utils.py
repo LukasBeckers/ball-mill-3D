@@ -22,7 +22,7 @@ class videoLoader():
                 break
         return frames
 
-    def load_video(self, video_path, start_frame=0, end_frame=-1):
+    def load_video(self, video_path):
         self.cap = cv2.VideoCapture(video_path)
         if not self.cap.isOpened():
             print("Error opening video file!")

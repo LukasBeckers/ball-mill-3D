@@ -357,7 +357,7 @@ class stereoCamera():
         cv2.imshow(win_name, img)
         cv2.setMouseCallback(win_name, mouse_callback)
         cv2.waitKey(0)
-        self.conf[f"anchor_points"][cam] = anchor_point
+        self.conf[f"anchor_point"][cam] = anchor_point
         cv2.destroyWindow(win_name)
 
     def draw_camera_region(self, img):
@@ -385,12 +385,12 @@ class stereoCamera():
         # checking for negative values and adjusting the anchor size
         for i, val in enumerate(start_point0):
             if val < 0:
-                self.anchor_points[0][i] -= val
+                self.conf["anchor_point"][0] -= val
                 return self(image)
 
         for i, val in enumerate(start_point1):
             if val < 0:
-                self.anchor_points[1][i] -= val
+                self.conf["anchor_point"][1] -= val
                 return self(image)
 
         frame0 = image[int(start_point0[1]): int(end_point0[1]), int(start_point0[0]): int(end_point0[0])]
@@ -400,35 +400,37 @@ class stereoCamera():
 
 if __name__=="__main__":
 
-    sC = stereoCamera(camera_size={0:(300, 150), 1:(300, 150)},
-                      anchor_point={0:(587, 269), 1:(598, 433)},
-                      camera_matrix={0:np.array([[2.24579312e+03, 0.00000000e+00, 6.06766474e+02],
-                                                 [0.00000000e+00, 3.18225724e+03, 2.87228912e+02],
-                                                 [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
-                                    1:np.array([[9.17450924e+02, 0.00000000e+00, 5.97492459e+02],
-                                                [0.00000000e+00, 1.08858369e+03, 2.96145751e+02],
-                                                [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])},
-                      optimized_camera_matrix={0:np.array( [[1.98885152e+03, 0.00000000e+00, 5.83904948e+02],
-                                                           [0.00000000e+00, 2.71756632e+03, 3.41261625e+02],
-                                                           [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
-                                               1:np.array([[9.35319179e+02, 0.00000000e+00, 5.90025655e+02],
-                                                          [0.00000000e+00, 1.09136910e+03, 2.97696817e+02],
-                                                          [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])},
+    sC = stereoCamera(camera_size={0: (480, 240), 1: (480, 240)},
+                      anchor_point={0: (587, 269), 1: (598, 433)},
+                      camera_matrix={0: np.array([[2.24579312e+03, 0.00000000e+00, 6.06766474e+02],
+                                                  [0.00000000e+00, 3.18225724e+03, 2.87228912e+02],
+                                                  [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
+                                     1: np.array([[9.17450924e+02, 0.00000000e+00, 5.97492459e+02],
+                                                  [0.00000000e+00, 1.08858369e+03, 2.96145751e+02],
+                                                  [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])},
+                      optimized_camera_matrix={0: np.array([[1.98885152e+03, 0.00000000e+00, 5.83904948e+02],
+                                                            [0.00000000e+00, 2.71756632e+03, 3.41261625e+02],
+                                                            [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
+                                               1: np.array([[9.35319179e+02, 0.00000000e+00, 5.90025655e+02],
+                                                            [0.00000000e+00, 1.09136910e+03, 2.97696817e+02],
+                                                            [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])},
                       projection_error={0: 0.26768362133770185, 1: 0.29408707559840946},
                       distortion={
-                          0:np.array([[-1.53486495e+00,  1.95803727e+01,  1.63594781e-01, -2.81574724e-02, -1.10093707e+02]]),
-                          1:np.array([[ 0.03667417,  0.10305058,  0.00557331, -0.00655738,-0.16404791]])},
-                      stereo_calibration_error= {0: 0.6988643727550614},
+                          0: np.array(
+                              [[-1.53486495e+00, 1.95803727e+01, 1.63594781e-01, -2.81574724e-02, -1.10093707e+02]]),
+                          1: np.array([[0.03667417, 0.10305058, 0.00557331, -0.00655738, -0.16404791]])},
+                      stereo_calibration_error={0: 0.6988643727550614},
                       translation_matrix={0: [[-0.60330682], [-0.39384531], [1.07405106]]},
-                      rotation_matrix={0: [[0.73971458,  0.1145444,   0.66310023],
-                                          [-0.09028238, - 0.95960383,  0.26647622],
-                                          [0.66683688, - 0.25698261, - 0.69949161]]}
+                      rotation_matrix={0: [[0.73971458, 0.1145444, 0.66310023],
+                                           [-0.09028238, - 0.95960383, 0.26647622],
+                                           [0.66683688, - 0.25698261, - 0.69949161]]}
                       )
+    sC = stereoCamera(camera_size={0: (480, 240), 1: (480, 240)})
     vL = videoLoader()
-    vL.load_video("../videos/WhatsApp Video 2024-03-29 at 19.14.15 (2).mp4", start_frame=100, end_frame=-100)
-    #frame = vL[10]
-    #sC.set_anchor_point(frame, 0)
-    #sC.set_anchor_point(frame, 1)
+    vL.load_video("../videos/WhatsApp Video 2024-04-02 at 6.40.29 PM.mp4")
+    frame = vL[10]
+    sC.set_anchor_point(frame, 0)
+    sC.set_anchor_point(frame, 1)
     frames = vL[:2]
 
     for frame in frames[:1]:
@@ -442,4 +444,4 @@ if __name__=="__main__":
 
     #sC.calibrate(frames, 0)
     #sC.calibrate(frames, 1)
-    sC.stero_calibrate(frames)
+    #sC.stero_calibrate(frames)

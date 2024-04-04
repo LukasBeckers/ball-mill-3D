@@ -1,4 +1,10 @@
 .idea
 venv
 videos/
-
+training_frames/
+training_videos/
+yolo_ds/
+yolo_v8
+yolo_training/runs/
+utils/__pycache__
+utils/runs

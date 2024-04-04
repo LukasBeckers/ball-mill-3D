@@ -91,9 +91,18 @@ class stickerDetector():
 
 
 if __name__=="__main__":
+    from ultralytics import YOLO
+
+    # Load a model
+    #model = YOLO("yolov8n.yaml")  # build a new model from scratch
+    #model = YOLO("./runs/detect/train2/weights/best.pt")  # load a pretrained model (recommended for training)
+
+    # Use the model
+    #model.train(data="config.yaml", epochs=150)  # train the model
+    #raise EOFError
     ballD = ballDetector()
-    sC = stereoCamera(camera_size={0: (300, 150), 1: (300, 150)},
-                      anchor_point={0: (587, 269), 1: (598, 433)},
+    sC = stereoCamera(camera_size={0: (480, 240), 1: (480, 240)},
+                      anchor_point={0: (609, 106), 1: (611, 452)},
                       camera_matrix={0: np.array([[2.24579312e+03, 0.00000000e+00, 6.06766474e+02],
                                                   [0.00000000e+00, 3.18225724e+03, 2.87228912e+02],
                                                   [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
@@ -118,27 +127,48 @@ if __name__=="__main__":
                                            [0.66683688, - 0.25698261, - 0.69949161]]}
                       )
     vL = videoLoader()
-    vL.load_video("../videos/WhatsApp Video 2024-03-29 at 19.13.45.mp4", start_frame=100, end_frame=-100)
-    # frame = vL[10]
-    # sC.set_anchor_point(frame, 0)
-    # sC.set_anchor_point(frame, 1)
-    frames = vL[100:]
 
-    for frame in frames:
-        frame = sC.draw_camera_region(frame)
+    import os
+    import time
+    import torch
+    files = os.listdir("../videos")
+    model = YOLO("./runs/detect/train2/weights/best.pt")
 
-        frame0, frame1 = sC(frame)
-        # Convert the image from BGR to HSV color space
+    for i, file in enumerate(files):
 
-        kp = ballD(frame1)
-        print("KP", kp)
-        if kp is None: continue
+        #results = model(f"../training_videos/{file}", show=True, save=True)
+        print(file)
 
-        for circle in kp[0]:
-            print(circle)
-            cv2.circle(frame1, (int(circle[0]), int(circle[1])), 1, (0, 255 ,0), 3)
-            cv2.circle(frame1, (int(circle[0]), int(circle[1])), int(circle[2]), (0, 255, 0), 3)
-        cv2.imshow("frame1", frame1)
+        vL.load_video(f"../videos/{file}")
+        #fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        #out_cam1 = cv2.VideoWriter(f"{i}wirklich_annotated_cam1.mp4", fourcc, 20.0,
+        #                           (480, 240))  # Adjust frame size (640, 480) as needed
+        #out_cam2 = cv2.VideoWriter(f"{i}wirklich_annotated_cam2.mp4", fourcc, 20.0, (480, 240))
+        #out_cam= cv2.VideoWriter(f"{i}wirklich_annotated_cam2.mp4", fourcc, 20.0, (480, 240))
+        frames = vL[100:-100]
+        for j, frame in enumerate(frames):
+            frame1, frame2 = sC(frame)
+            results1 = model(frame1)
+            results2 = model(frame2)
+            for det in results2:
+                print(det.boxes)
+                #print(det.names)
+                #print(det.probs)
 
-        cv2.waitKey(0)
-    cv2.destroyAllWindows()
+            # Draw the detections on frame1 and frame2.
+            # This assumes the results object has a method to render the detections which returns the image.
+            #frame1_with_detections = results1.render()[0]
+            #frame2_with_detections = results2.render()[0]
+
+            # Write the frame into the file 'output_cam1.mp4' and 'output_cam2.mp4'
+            #out_cam1.write(frame1)
+            #out_cam2.write(frame2)
+            #out_cam.write(frame)
+
+        #out_cam1.release()
+        #out_cam2.release()
+        #out_cam.release()
+
+
+
+
