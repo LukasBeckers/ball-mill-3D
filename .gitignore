@@ -1,8 +1,11 @@
 .idea
 venv
-videos/
-training_frames/
-training_videos/
+videos/*
+videos/.gitkeep
+training_frames/*
+training_frames/.gitkeep
+training_videos/*
+training_videos/.gitkeep
 yolo_ds/
 yolo_v8
 yolo_training/runs/

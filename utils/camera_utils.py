@@ -1,4 +1,4 @@
-from utils.video_utils import *
+from video_utils import *
 from collections import defaultdict
 
 

@@ -1,97 +1,55 @@
 import cv2
+import os
+from ultralytics import YOLO
 
 from camera_utils import *
 
-class blobDetector():
-    pass
-    def __init__(self):
-        params = cv2.SimpleBlobDetector_Params()
 
-        params.filterByColor = True
-        params.blobColor = 255  # Assuming white blobs
 
-        params.filterByArea = True
-        params.minArea = 20  # Adjust based on the size of the ball in your image
 
-        params.filterByCircularity = True
-        params.minCircularity = 0.8  # Adjust for how round the ball is
-        # Create a detector with the parameters
-        self.detector = cv2.SimpleBlobDetector_create(params)
 
-    def __call__(self, img):
-        keypoints = self.detector.detect(img)
-        return keypoints
 class ballDetector():
+    """
+    Refines the detection results of the trained YOLOV8
+    detector
+    """
     def __init__(self):
-        self.ROI = None  #[x1, y1, x2, y2]
+        self.ROI = None
         self.region_size = 40
+        self.warmup_regions = []
+        self.warmup_steps = 5
+        self.current_warmup_steps = 0
 
+    def _warmup(self, detection_results):
+        """
+        This function can be used to automatically determine the starting 
+        regions of intrest for the ball/balls.
+        It works by removing outliers from the first self.warmup_steps 
+        detections and using the last valid detection as starting ROI.
+        """
+        detection_results = detection_results[0]  # We only use single frame detection.
+        boxes = detection_results.boxes.xyxy.tolist()
+        classes = detection_results.boxes.cls
 
-    def _set_roi(self, img):
-        img = np.array(img)
-        global roi_center
-        roi_center=[]
-        def mouse_callback(event, x, y, flags, param):
-            global roi_center
-            if event == cv2.EVENT_LBUTTONDOWN:
-                roi_center = (x, y)
-                print("Left mouse button pressed!", roi_center)
+        for cl, box in zip(classes, boxes):
+            if  cl == 0:  # 0 = Ball, 1 = Red Sticker
+                coord = [box[0] + box[2], box[1] + box[3] ] #Box = xyxy creating average coord 
+                self.warmup_regions.append(coord)
 
-        cv2.putText(img,
-                    "Click the ball, and confirm with Space",
-                    (5, 5),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    1,
-                    (255, 255, 255),
-                    2, cv2.LINE_AA)
+    def __call__(self, detection_results):
+        """
+        detection_results = YOLOV8 results from detector trained
+        to detect the ball and the red stickers. 
+        """
         
-        while len(roi_center) == 0:
-            cv2.imshow("Kugel", img)
-            cv2.setMouseCallback("Kugel", mouse_callback)
-            cv2.waitKey(1)
+        boxes = detection_results.boxes.xyxy
+        classes = detection_results.boxes.cls
 
-        roi = np.array([roi_center[0] - self.region_size, roi_center[1] - self.region_size,
-                        roi_center[0] + self.region_size, roi_center[1] + self.region_size], dtype=np.int32)
-
-        self.ROI = roi
-
-
-    def __call__(self, img):
-        if self.ROI is None:
-            self._set_roi(img)
-        else:
-            img = np.array(img)
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-            img = img[self.ROI[1]:self.ROI[3], self.ROI[0]:self.ROI[2]]
-
-            circles = cv2.HoughCircles(img,
-                                       cv2.HOUGH_GRADIENT,
-                                       1,
-                                       10,
-                                       param1=100,
-                                       param2=20,
-                                       minRadius=5,
-                                       maxRadius=25)
-            if circles is None:
-                self.ROI = None
-                return self(img)
-
-            circles = [[[x + self.ROI[0], y + self.ROI[1], z]] for [x, y, z] in circles[0]]
-            
-            roi_center = circles[0][0] # first circle will be used as the main detection
-            self.ROI = np.array([roi_center[0] - self.region_size, roi_center[1] - self.region_size,
-                        roi_center[0] + self.region_size, roi_center[1] + self.region_size], dtype=np.int32)
-            
-            return circles
-class stickerDetector():
-    pass
-
-
+        print("Boxes", boxes, "Classes", classes)
 
 
 
 if __name__=="__main__":
-    from ultralytics import YOLO
 
     # Load a model
     #model = YOLO("yolov8n.yaml")  # build a new model from scratch
@@ -102,7 +60,7 @@ if __name__=="__main__":
     #raise EOFError
     ballD = ballDetector()
     sC = stereoCamera(camera_size={0: (480, 240), 1: (480, 240)},
-                      anchor_point={0: (609, 106), 1: (611, 452)},
+                      anchor_point={0: (587, 269), 1: (598, 433)},
                       camera_matrix={0: np.array([[2.24579312e+03, 0.00000000e+00, 6.06766474e+02],
                                                   [0.00000000e+00, 3.18225724e+03, 2.87228912e+02],
                                                   [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
@@ -127,34 +85,28 @@ if __name__=="__main__":
                                            [0.66683688, - 0.25698261, - 0.69949161]]}
                       )
     vL = videoLoader()
-
-    import os
-    import time
-    import torch
+    Dt1 = ballDetector()   
+    Dt2 = ballDetector()
     files = os.listdir("../videos")
-    model = YOLO("./runs/detect/train2/weights/best.pt")
+    model = YOLO("../weights/best.pt")
 
-    for i, file in enumerate(files):
-
-        #results = model(f"../training_videos/{file}", show=True, save=True)
-        print(file)
-
+    for i, file in enumerate(files[6:]):
         vL.load_video(f"../videos/{file}")
-        #fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        #out_cam1 = cv2.VideoWriter(f"{i}wirklich_annotated_cam1.mp4", fourcc, 20.0,
-        #                           (480, 240))  # Adjust frame size (640, 480) as needed
-        #out_cam2 = cv2.VideoWriter(f"{i}wirklich_annotated_cam2.mp4", fourcc, 20.0, (480, 240))
-        #out_cam= cv2.VideoWriter(f"{i}wirklich_annotated_cam2.mp4", fourcc, 20.0, (480, 240))
         frames = vL[100:-100]
+
         for j, frame in enumerate(frames):
             frame1, frame2 = sC(frame)
             results1 = model(frame1)
             results2 = model(frame2)
-            for det in results2:
-                print(det.boxes)
-                #print(det.names)
-                #print(det.probs)
+            Dt1._warmup(results1)
+            Dt2._warmup(results2)
+            # for det in results2:
+            #    print("Boxes" * 10)
+            #    print("Boxes", det.boxes.xyxy, det.boxes.cls)
+            #    cv2.imshow("Frame2", frame2)
+            #    cv2.waitKey(1)
 
+                
             # Draw the detections on frame1 and frame2.
             # This assumes the results object has a method to render the detections which returns the image.
             #frame1_with_detections = results1.render()[0]
