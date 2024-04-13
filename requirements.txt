@@ -1,6 +1,7 @@
-torch==2.2.2+cu118
-torchaudio==2.2.2+cu118
-torchvision==0.17.2+cu118
-opencv-python==4.9.0
-ultralyics==8.1.43
-
+#torch==2.2.2+cu118
+#torchaudio==2.2.2+cu118
+#torchvision==0.17.2+cu118
+opencv-python==4.9.0.80
+ultralyics~=8.1.43
+# install torch with:
+# pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118

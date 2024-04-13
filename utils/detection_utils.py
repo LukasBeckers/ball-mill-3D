@@ -5,9 +5,6 @@ from ultralytics import YOLO
 from camera_utils import *
 
 
-
-
-
 class ballDetector():
     """
     Refines the detection results of the trained YOLOV8
@@ -15,16 +12,16 @@ class ballDetector():
     """
     def __init__(self):
         self.ROI = None
-        self.region_size = 40
+        self.max_dist = 40
         self.warmup_regions = []
         self.warmup_steps = 5
-        self.current_warmup_steps = 0
+        self.current_warmup_step = 0
 
     def _warmup(self, detection_results):
         """
-        This function can be used to automatically determine the starting 
+        This function can be used to automatically determine the starting
         regions of intrest for the ball/balls.
-        It works by removing outliers from the first self.warmup_steps 
+        It works by removing outliers from the first self.warmup_steps
         detections and using the last valid detection as starting ROI.
         """
         detection_results = detection_results[0]  # We only use single frame detection.
@@ -33,19 +30,44 @@ class ballDetector():
 
         for cl, box in zip(classes, boxes):
             if  cl == 0:  # 0 = Ball, 1 = Red Sticker
-                coord = [box[0] + box[2], box[1] + box[3] ] #Box = xyxy creating average coord 
+                coord = [box[0] + box[2], box[1] + box[3] ] #Box = xyxy creating average coord
                 self.warmup_regions.append(coord)
 
+        # location gathering compleated, calculating starting position
+        # Maybe needs improvement if detection is bad!!
+        if self.current_warmup_step == self.warmup_steps:
+            
+            diffs = [[x2 - x1, y2 - y1] for [[x1, y1], [x2, y2]] in zip(self.warmup_regions[:-1], self.warmup_regions[1:])]
+            dists = [np.sqrt(x**2 + y **2) for x, y in diffs]
+            # removing all measurements that have an exessive distance to the previous measurement
+            # because they are probably errors
+            for i, dist in enumerate(dists):
+                if dist > self.max_dist:
+                    self.warmup_regions.pop(i)
+            self.ROI = self.warmup_regions[-1]
+
+        self.current_warmup_step += 1
     def __call__(self, detection_results):
         """
         detection_results = YOLOV8 results from detector trained
+        
         to detect the ball and the red stickers. 
         """
         
-        boxes = detection_results.boxes.xyxy
-        classes = detection_results.boxes.cls
+        if self. current_warmup_step <= self.warmup_steps:
+            self._warmup(detection_results)
+        else:
 
-        print("Boxes", boxes, "Classes", classes)
+            detection_results = detection_results[0]  # We only use single frame detection.
+            boxes = detection_results.boxes.xyxy.tolist()
+            classes = detection_results.boxes.cls
+
+            for cl, box in zip(classes, boxes):
+                coord = None
+                if  cl == 0:  # 0 = Ball, 1 = Red Sticker
+                    coord = [box[0] + box[2], box[1] + box[3] ] #Box = xyxy creating average coord
+
+                print("Coord", coord)
 
 
 
@@ -53,7 +75,7 @@ if __name__=="__main__":
 
     # Load a model
     #model = YOLO("yolov8n.yaml")  # build a new model from scratch
-    #model = YOLO("./runs/detect/train2/weights/best.pt")  # load a pretrained model (recommended for training)
+    #model = YOLO("./weights/best.pt")  # load a pretrained model (recommended for training)
 
     # Use the model
     #model.train(data="config.yaml", epochs=150)  # train the model
@@ -87,19 +109,27 @@ if __name__=="__main__":
     vL = videoLoader()
     Dt1 = ballDetector()   
     Dt2 = ballDetector()
-    files = os.listdir("../videos")
-    model = YOLO("../weights/best.pt")
-
+    files = os.listdir("videos")
+    model = YOLO("weights/best.pt")
+    import torch
+    print(torch.cuda.is_available())
     for i, file in enumerate(files[6:]):
-        vL.load_video(f"../videos/{file}")
+        print("File", file)
+        vL.load_video(f"videos/{file}")
         frames = vL[100:-100]
 
         for j, frame in enumerate(frames):
             frame1, frame2 = sC(frame)
             results1 = model(frame1)
             results2 = model(frame2)
-            Dt1._warmup(results1)
-            Dt2._warmup(results2)
+           
+            Dt1(results1)
+            Dt2(results2)
+            #print("Locations D1", Dt1.warmup_regions)
+
+            #print("Locations D2", Dt2.warmup_regions)
+
+        break
             # for det in results2:
             #    print("Boxes" * 10)
             #    print("Boxes", det.boxes.xyxy, det.boxes.cls)
