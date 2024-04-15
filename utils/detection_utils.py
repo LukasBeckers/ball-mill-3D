@@ -2,7 +2,7 @@ import cv2
 import os
 from ultralytics import YOLO
 
-from camera_utils import *
+from utils.camera_utils import *
 
 
 class ballDetector():
@@ -12,7 +12,7 @@ class ballDetector():
     """
     def __init__(self):
         self.ROI = None
-        self.max_dist = 40
+        self.max_dist = 20
         self.warmup_regions = []
         self.warmup_steps = 5
         self.current_warmup_step = 0
@@ -30,11 +30,11 @@ class ballDetector():
 
         for cl, box in zip(classes, boxes):
             if  cl == 0:  # 0 = Ball, 1 = Red Sticker
-                coord = [box[0] + box[2], box[1] + box[3] ] #Box = xyxy creating average coord
+                coord = np.array([box[0] + box[2], box[1] + box[3] ])/2 #Box = xyxy creating average coord
                 self.warmup_regions.append(coord)
-
-        # location gathering compleated, calculating starting position
+                self.current_warmup_step += 1
         # Maybe needs improvement if detection is bad!!
+        # location gathering compleated, calculating starting position
         if self.current_warmup_step == self.warmup_steps:
             
             diffs = [[x2 - x1, y2 - y1] for [[x1, y1], [x2, y2]] in zip(self.warmup_regions[:-1], self.warmup_regions[1:])]
@@ -45,9 +45,10 @@ class ballDetector():
                 if dist > self.max_dist:
                     self.warmup_regions.pop(i)
             self.ROI = self.warmup_regions[-1]
+        return None
 
-        self.current_warmup_step += 1
-    def __call__(self, detection_results):
+
+    def __call__(self, detection_results, frame_size=[480, 240]):
         """
         detection_results = YOLOV8 results from detector trained
         
@@ -55,20 +56,32 @@ class ballDetector():
         """
         
         if self. current_warmup_step <= self.warmup_steps:
-            self._warmup(detection_results)
+            print("Warming up", self.current_warmup_step)
+            return self._warmup(detection_results)
         else:
-
+            print("Call")
             detection_results = detection_results[0]  # We only use single frame detection.
             boxes = detection_results.boxes.xyxy.tolist()
             classes = detection_results.boxes.cls
-
+    
             for cl, box in zip(classes, boxes):
                 coord = None
                 if  cl == 0:  # 0 = Ball, 1 = Red Sticker
-                    coord = [box[0] + box[2], box[1] + box[3] ] #Box = xyxy creating average coord
-
-                print("Coord", coord)
-
+                    coord = np.array([box[0] + box[2], box[1] + box[3] ])/2 #Box = xyxy creating average coord
+                if coord is not None:
+                    # checking if the traveled distance is plausible
+                    dist = np.sqrt((coord[0]-self.ROI[0])**2 + (coord[1] - self.ROI[1])**2)
+                    if dist > self.max_dist:
+                        self.max_dist += 10
+                        print("Over max dist!!!")
+                        return None
+                    else:
+                        self.max_dist = 20
+                        self.ROI = coord
+                        return coord
+            
+            print("Coord was None!!!")
+            return None
 
 
 if __name__=="__main__":
@@ -111,8 +124,7 @@ if __name__=="__main__":
     Dt2 = ballDetector()
     files = os.listdir("videos")
     model = YOLO("weights/best.pt")
-    import torch
-    print(torch.cuda.is_available())
+
     for i, file in enumerate(files[6:]):
         print("File", file)
         vL.load_video(f"videos/{file}")
@@ -123,9 +135,24 @@ if __name__=="__main__":
             results1 = model(frame1)
             results2 = model(frame2)
            
-            Dt1(results1)
-            Dt2(results2)
-            #print("Locations D1", Dt1.warmup_regions)
+            coord1 = Dt1(results1, frame1.shape)
+            coord2 = Dt2(results2, frame2.shape)
+            print("ROI", Dt1.ROI, Dt2.ROI, Dt1.max_dist, Dt2.max_dist) 
+            if coord1 is None or coord2 is None:
+                continue
+
+            frame1 = cv2.circle(frame1, np.array(coord1, dtype=int), 1, [255, 0, 255], 2)
+
+            frame2 = cv2.circle(frame2, np.array(coord2, dtype=int), 1, [255, 0, 255], 2)
+            frame1 = cv2.rectangle(frame1, (int(Dt1.ROI[0] - Dt1.max_dist/2), int(Dt1.ROI[1] - Dt1.max_dist/2)), (int(Dt1.ROI[0] + Dt1.max_dist/2), int(Dt1.ROI[1] + Dt1.max_dist/2)), [0, 255, 0], 2)
+            frame2 = cv2.rectangle(frame2, (int(Dt2.ROI[0] - Dt2.max_dist/2), int(Dt2.ROI[1] - Dt2.max_dist/2)), (int(Dt2.ROI[0] + Dt2.max_dist/2), int(Dt2.ROI[1] + Dt2.max_dist/2)), [0, 255, 0], 2)
+            cv2.imshow("frame1", frame1)
+            cv2.imshow("frame1", frame1)
+            cv2.imshow("frame2", frame2)
+            cv2.waitKey(0)
+                
+        #print("Locations D1", Dt1.warmup_regions)
+        #print("Locations D1", Dt1.warmup_regions)
 
             #print("Locations D2", Dt2.warmup_regions)
 

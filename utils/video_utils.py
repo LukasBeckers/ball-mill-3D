@@ -13,8 +13,6 @@ class videoLoader():
         i = 0
         while (self.cap.isOpened()):
             i +=  1
-            if i%100 == 0:
-                print(i)
             ret, frame = self.cap.read()
             if ret:
                 frames.append(frame)

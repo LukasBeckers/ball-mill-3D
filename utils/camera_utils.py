@@ -1,4 +1,4 @@
-from video_utils import *
+from utils.video_utils import *
 from collections import defaultdict
 
 
@@ -66,26 +66,29 @@ class stereoCamera():
 
             img = cv2.resize(img, np.array(img.shape[:2])[::-1] * factor)
 
-            try:
-                _ = self.cutout_corners
-            except AttributeError:
-                self.cutout_corners = []
+            global cutout_corners # will be deleted after iteration over images
+            try: # fuck it!
+                _ = len(cutout_corners)
+            except Exception:
+                cutout_corners = []
 
-            global cutout_corners
-            cutout_corners = []
             def mouse_callback(event, x, y, flags, param):
                 global cutout_corners
                 if event == cv2.EVENT_LBUTTONDOWN:
                     cutout_corners.append((x, y))
                     print("Left mouse button pressed!", cutout_corners)
-
-            while len(self.cutout_corners) < 2:
-                cv2.imshow(f'Camera: {cam}', img)
-                cv2.setMouseCallback(f"Camera: {cam}", mouse_callback)
-                cv2.waitKey(0)
-                if len(cutout_corners) >=  2:
-                    self.cutout_corners = cutout_corners
-                    cv2.destroyWindow(f"Camera: {cam}")
+            if len(cutout_corners) <2:
+                while True:
+                    for point in cutout_corners[-2:]:
+                        cv2.circle(img, point, 2, (0,255, 0), 2)
+                    cv2.putText(img, f'Click on the corners of the chess board to cut out the image section', (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(255, 255, 255), 1)
+                    cv2.imshow(f'Camera: {cam}', img)
+                    cv2.setMouseCallback(f"Camera: {cam}", mouse_callback)
+                    key = cv2.waitKey(1)
+                    if key & 0xFF == 32:
+                        cv2.destroyWindow(f"Camera: {cam}")
+                        break
+            self.cutout_corners = cutout_corners[-2:]
 
             cutout_corners = self.cutout_corners
             cc_arr = np.array(cutout_corners[-2:], dtype=np.int32)
@@ -95,6 +98,7 @@ class stereoCamera():
 
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
 
+            cv2.putText(img, f'Image section {i} press any key to continue.', (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(255, 255, 255), 1)
             cv2.imshow("Cutout", img)
             cv2.waitKey(0)
             cv2.destroyWindow("Cutout")
@@ -136,6 +140,10 @@ class stereoCamera():
                     cv2.destroyWindow(f'Chessboard corners; Camera: {self}')
                 objpoints.append(objp)
                 imgpoints.append(corners)
+        del cutout_corners
+        if imgpoints == []:
+            print("No Corners were detected, failed calibration")
+            return
 
         height = img.shape[0]
         width = img.shape[1]
@@ -194,7 +202,7 @@ class stereoCamera():
                     for l in lines:
                         cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
 
-                if key & 0xFF == 27:
+                if key & 0xFF == 32:
                     print("Escaping Line drawing")
                     break
                 if len(line) == 4:
@@ -344,21 +352,40 @@ class stereoCamera():
 
     def set_anchor_point(self, img, cam):
         """
-        img: frame from Video
-        cam: number of camera for which to set the anchor-point (0 or 1)
+        Set an anchor point on the image using the mouse click.
+        
+        Parameters:
+        img (numpy.ndarray): Frame from video.
+        cam (int): Number of the camera (0 or 1) for which to set the anchor point.
         """
+        anchor_point = None
+
         def mouse_callback(event, x, y, flags, param):
-            global anchor_point
             if event == cv2.EVENT_LBUTTONDOWN:
+                nonlocal anchor_point
                 anchor_point = (x, y)
                 print("Left mouse button pressed!", anchor_point)
+        while True:
+            win_name = f"Set Anchor Point - Camera {cam}"
+            instructions_text = f"Left-click where the {'mirror' if cam == 0 else 'frontal'}-camera should point. Press space when finished!"
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            org = (10, 30)  # Bottom-left corner of the text in the image
+            font_scale = 0.7
+            color = (255, 255, 255)  # White color text
+            thickness = 2
+            img_with_text = img.copy()
+            cv2.circle(img_with_text, anchor_point, 2, (0, 255, 0), 2)
+            cv2.putText(img_with_text, instructions_text, org, font, font_scale, color, thickness)
 
-        win_name = "Set Anchor Point" + str(cam)
-        cv2.imshow(win_name, img)
-        cv2.setMouseCallback(win_name, mouse_callback)
-        cv2.waitKey(0)
-        self.conf[f"anchor_point"][cam] = anchor_point
-        cv2.destroyWindow(win_name)
+            cv2.imshow(win_name, img_with_text)
+            cv2.setMouseCallback(win_name, mouse_callback)
+            key = cv2.waitKey(1)  # Wait indefinitely until a key is pressed
+            if key & 0xFF == 32:
+                cv2.destroyWindow(win_name)
+                break
+        if anchor_point is not None:
+            self.conf["anchor_point"][cam] = anchor_point
+
 
     def draw_camera_region(self, img):
 
