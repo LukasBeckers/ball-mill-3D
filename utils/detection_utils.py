@@ -14,7 +14,7 @@ class ballDetector():
         self.ROI = None
         self.max_dist = 20
         self.warmup_regions = []
-        self.warmup_steps = 5
+        self.warmup_steps = 10
         self.current_warmup_step = 0
 
     def _warmup(self, detection_results):

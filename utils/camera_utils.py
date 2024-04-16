@@ -1,9 +1,18 @@
+import cv2
+import torch
+
 from utils.video_utils import *
 from collections import defaultdict
+import yaml
+from yaml import SafeLoader
+import os
+
+# Get the directory of the current script
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 class stereoCamera():
-    def __init__(self, name="", **kwargs):
+    def __init__(self, name="noName", **kwargs):
         """
         Possible **kwargs are all dicts with the keys = int(camera_index) ie. 0 or 1:
 
@@ -23,6 +32,45 @@ class stereoCamera():
                                  for key, value in kwargs.items()})
 
         self.name = name
+
+    def save_to_yaml(self, filename="camera_config.yaml"):
+
+        def convet_to_list(obj):
+            if isinstance(obj, (list, tuple)):
+                return [convet_to_list(o) for o in obj]
+            elif isinstance(obj, (np.ndarray, torch.Tensor)):
+                return obj.tolist()
+            return obj
+
+        data_to_save = {'name': self.name}
+        for key, value in self.conf.items():
+            value = {k: convet_to_list(v) for k, v in value.items()}
+            data_to_save[key] = value
+
+        # Writing to a yaml file
+        filename = f"config/{filename}"
+        with open(os.path.join(os.path.dirname(current_dir), filename), 'w') as file:
+            yaml.dump(data_to_save, file)
+
+    def load_from_yaml(self, filename=f"camera_config.yaml"):
+        # Reading from a yaml file
+        filename = f"config/{filename}"
+        with open(os.path.join(os.path.dirname(current_dir), filename), 'r') as file:
+            data_loaded = yaml.load(file, Loader=SafeLoader)
+        # Reinitializing the instance variables
+        self.name = data_loaded.pop('name')
+
+        def recursive_defaultdict():
+            return defaultdict(lambda: None)
+
+        self.conf = defaultdict(recursive_defaultdict,
+                                {key: defaultdict(lambda: None, {k: v for k, v in value.items()})
+                                 for key, value in data_loaded.items()})
+
+    @staticmethod
+    def recursive_defaultdict():
+        return defaultdict(lambda: None)
+
 
     def __str__(self):
         return self.name
@@ -106,7 +154,6 @@ class stereoCamera():
             gray = img
             # localizing the chessboard corners in image-space.
             ret, corners = cv2.findChessboardCorners(gray, (rows, columns), None)
-            print("ret", ret)
             if ret:
                 # trying to improve the detection of the chessboard corners!
                 corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
@@ -168,12 +215,24 @@ class stereoCamera():
         cv2.destroyAllWindows()
         return
 
-    def stero_calibrate(self, images, rows=8, columns=10, scaling=0.005):
+    def stereo_calibrate(self, images, rows=8, columns=10, scaling=0.005):
         """
 
         """
         assert self.conf["camera_matrix"][0] is not None and self.conf["camera_matrix"][1] is not None, \
             "Calibrate both cameras first!"
+
+        def switch_rows(corners, len_row):
+            "Switches the rows in the chessboard corner detection"
+
+            switched_corners = []
+            row = []
+            for corner in corners:
+                row.insert(0, corner)
+                if len(row) == len_row:
+                    switched_corners.extend(row)
+                    row = []
+            return np.array(switched_corners)
 
         def draw_lines(img):
             global line # line = (x1, y1, x2, y2)
@@ -192,6 +251,9 @@ class stereoCamera():
 
             img_old = np.array(img)
             while True:
+                cv2.putText(img, f'Left Click: line point, right: undo point, R: undo line, space: finish', (10, 30),
+                            cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
+
                 cv2.imshow("Drawing Lines", img)
                 cv2.setMouseCallback("Drawing Lines", mouse_callback)
                 key = cv2.waitKey(1)
@@ -203,7 +265,8 @@ class stereoCamera():
                         cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
 
                 if key & 0xFF == 32:
-                    print("Escaping Line drawing")
+                    #print("Escaping Line drawing")
+                    cv2.destroyWindow("Drawing Lines")
                     break
                 if len(line) == 4:
                     lines.append(line)
@@ -211,9 +274,9 @@ class stereoCamera():
                     img = np.array(img_old)
                     for l in lines:
                         cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
-                    print("Line drawn")
+                    #print("Line drawn")
 
-            return img, line
+            return img_old, lines
 
         def line_intersection(lines):
             """Finds the intersection of two lines given in Hesse normal form."""
@@ -238,12 +301,12 @@ class stereoCamera():
         rows -= 1
         columns -= 1
 
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.0001)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100000, 0.0000001)
 
         # coordinates of squares in the checkerboard world space
         objp = np.zeros((rows * columns, 3), np.float32)
         objp[:, :2] = np.mgrid[0:rows, 0:columns].T.reshape(-1, 2)
-        objp = scaling * objp
+        objp = objp * scaling
 
         # Pixel coordinates in image space of checkerboard
         imgpoints_1 = []
@@ -268,20 +331,19 @@ class stereoCamera():
             img2_old = np.array(img2)
             img1, lines1 = draw_lines(img1)
             img2, lines2 = draw_lines(img2)
-
             corners1 = line_intersection(lines1)
             corners2 = line_intersection(lines2)
-
-
             # Ignoring intersections outside the image
             w, h = img1.shape[:2]
 
             corners1 = np.array([[corner] for corner in corners1 if h > corner[0] > 0 and w > corner[1] > 0])
             corners2 = np.array([[corner] for corner in corners2 if h > corner[0] > 0 and w > corner[1] > 0])
-
+            cv2.putText(img1, f's: switch order of all, l = switch lines',
+                        (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(0, 0, 255), 1)
             for i, [corner] in enumerate(corners1):
                 cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
                             (0, 0, 255), 1)
+
             for i, [corner] in enumerate(corners2):
                 cv2.putText(img2, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
                             (0, 0, 255), 1)
@@ -291,9 +353,7 @@ class stereoCamera():
 
             if key & 0xFF == ord('s'):  # press s to switch ordering of img1
                 cv2.destroyWindow(f'Detection 1')
-                print("Corners1 before", corners1.shape)
                 corners1 = corners1[::-1]
-                print("Corners1 after", corners1.shape)
                 # drawing the new corners
                 img1 = np.array(img1_old)
                 for i, [corner] in enumerate(corners1):
@@ -304,10 +364,25 @@ class stereoCamera():
                 cv2.imshow(f'Detection 1', img1)
                 cv2.waitKey(0)
 
+            if key & 0xFF == ord("l"): # press l to switch lines in img1
+                cv2.destroyWindow(f"Detection 1")
+                corners1 = switch_rows(corners1, rows)
+                img1 = np.array(img1_old)
+                for i, [corner] in enumerate(corners1):
+                    cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])),
+                                cv2.FONT_HERSHEY_COMPLEX,
+                                1,
+                                (0, 0, 255), 1)
+                cv2.imshow(f'Detection 1', img1)
+                cv2.waitKey(0)
+
+
             # adjusting corner coordinates for scaling
             corners1 /= factor
             corners2 /= factor
+
             objpoints.append(objp)
+
 
             imgpoints_1.append(corners1)
             imgpoints_2.append(corners2)
@@ -322,15 +397,13 @@ class stereoCamera():
         imgpoints_2 = np.swapaxes(imgpoints_2, axis1=1, axis2=2)
         objpoints = np.array(objpoints)
         objpoints = np.expand_dims(objpoints, axis=1)
-        print("objectpoints shape", objpoints.shape)
-        print("imgpoints shape", imgpoints_1.shape)
         ret, CM1, dist1, CM2, dist2, R, T, E, F = cv2.stereoCalibrate(objpoints,
                                                                       imgpoints_1,
                                                                       imgpoints_2,
-                                                                      self.conf["camera_matrix"][0],
-                                                                      self.conf["distortion"][0],
-                                                                      self.conf["camera_matrix"][1],
-                                                                      self.conf["distortion"][1],
+                                                                      np.array(self.conf["camera_matrix"][0]),
+                                                                      np.array(self.conf["distortion"][0]),
+                                                                      np.array(self.conf["camera_matrix"][1]),
+                                                                      np.array(self.conf["distortion"][1]),
                                                                       (width, height),
                                                                       criteria=criteria,
                                                                       flags=stereocalibration_flags)
@@ -422,6 +495,9 @@ class stereoCamera():
 
         frame0 = image[int(start_point0[1]): int(end_point0[1]), int(start_point0[0]): int(end_point0[0])]
         frame1 = image[int(start_point1[1]): int(end_point1[1]), int(start_point1[0]): int(end_point1[0])]
+
+        # frame0 should be mirror frame, please use this convention
+        frame0 = np.fliplr(frame0)
 
         return frame0, frame1
 
