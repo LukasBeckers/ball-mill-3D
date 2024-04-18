@@ -1,7 +1,0 @@
-path: D:\\Python_Projekte\\BallMill3D\\yolo_ds
-train: images
-val: images
-
-names:
-    0: Ball
-    1: Sticker

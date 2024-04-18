@@ -11,3 +11,5 @@ yolo_v8
 yolo_training/runs/
 utils/__pycache__
 utils/runs
+label_studio/*
+train_samples/*
