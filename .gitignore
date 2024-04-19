@@ -13,3 +13,5 @@ utils/__pycache__
 utils/runs
 label_studio/*
 train_samples/*
+runs/*
+utils/__pycache__/*

@@ -5,16 +5,90 @@ from ultralytics import YOLO
 from utils.camera_utils import *
 
 
-class ballDetector():
+class stickerDetector():
     """
-    Refines the detection results of the trained YOLOV8
+    Refines the sticker-detection results of the trained YOLOV8
     detector
     """
-    def __init__(self):
+
+    def __init__(self, n_stickers, max_dist=10):
+        self.ROIS = {}
+        self.max_dist = max_dist
+        self.first_frame = True
+        self.n_stickers = n_stickers
+
+    def __call__(self, detection_results):
+        """
+        detection_results = YOLOV8 results from detector trained
+
+        to detect the red stickers.
+        In contrast to the ballDetector, the stickerDetector uses no warmup-steps, because sticker detection tends to be very solid.
+        Make sure that all stickers and only the stickers are detected in the first frame.
+        """
+
+        detection_results = detection_results[0]  # We only use single frame detection.
+        boxes = detection_results.boxes.xyxy.tolist()
+        classes = detection_results.boxes.cls
+
+        coords = []
+        for i, (cl, box) in enumerate(zip(classes, boxes)):
+            coord = None
+            if cl == 1:  # 0 = Ball, 1 = Red Sticker
+                coord = np.array([box[0] + box[2], box[1] + box[3]]) / 2  # Box = xyxy creating average coord
+
+            if coord is not None:
+                coords.append(coord)
+
+        if self.first_frame:
+            if len(coords) == self.n_stickers:
+                idxs = np.argsort([c[0] for c in coords])
+                self.ROIS = {j: coords[i] for j, i in enumerate(idxs)}
+                self.first_frame = False
+                return None
+            else:
+                print(
+                    f"First frame detection had {len(coords)} stickers detected, the real number of stickers should be {self.n_stickers}, skipping!")
+                return None
+        else:
+            results = {}
+            # choosing the coord for each roi, that is closest and checking if dist is over max dist
+            for i, roi in self.ROIS.items():
+                min_dist = 10E20
+                candiate = None
+                taken_coords = []
+                for j, coord in enumerate(coords):
+                    dist = np.sqrt((coord[0] - roi[0]) ** 2 + (coord[1] - roi[1]) ** 2)
+
+                    if dist < min_dist:
+                        if not j in taken_coords:  # Prevent double assignments
+                            min_dist = dist
+                            candidate = coord
+
+                if min_dist > self.max_dist:
+                    print("Over max dist in sticker detection!")
+                    return None
+                else:
+                    results[i] = candidate
+                    taken_coords.append(j)
+
+        if len(results) == self.n_stickers:
+            self.ROIS.update(results)
+            return results
+
+        print("Not enough stickers detected!")
+        return None
+
+
+class ballDetector():
+    """
+    Refines the ball-detection results of the trained YOLOV8
+    detector
+    """
+    def __init__(self, max_dist=40, warmup_steps=10):
         self.ROI = None
-        self.max_dist = 20
+        self.max_dist = max_dist
         self.warmup_regions = []
-        self.warmup_steps = 10
+        self.warmup_steps = warmup_steps
         self.current_warmup_step = 0
 
     def _warmup(self, detection_results):
@@ -48,18 +122,17 @@ class ballDetector():
         return None
 
 
-    def __call__(self, detection_results, frame_size=[480, 240]):
+    def __call__(self, detection_results):
         """
         detection_results = YOLOV8 results from detector trained
         
-        to detect the ball and the red stickers. 
+        to detect the ball.
         """
         
         if self. current_warmup_step <= self.warmup_steps:
             print("Warming up", self.current_warmup_step)
             return self._warmup(detection_results)
         else:
-            print("Call")
             detection_results = detection_results[0]  # We only use single frame detection.
             boxes = detection_results.boxes.xyxy.tolist()
             classes = detection_results.boxes.cls

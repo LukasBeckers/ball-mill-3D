@@ -315,172 +315,66 @@ class stereoCamera():
         objpoints = []
 
         for img in images:
-            print(img.shape, "Debug, imgshape")
             img1, img2 = self(img)
 
             assert img1.shape == img2.shape, "For both cameras must have the same resolution for stereo-calibration"
 
             height, width = img1.shape[:2]
 
-            factor = 4
+            factor = 3
 
             img1 = cv2.resize(img1, np.array(img1.shape[:2])[::-1] * factor)
             img2 = cv2.resize(img2, np.array(img2.shape[:2])[::-1] * factor)
             img1_old = np.array(img1)
             img2_old = np.array(img2)
-            if manual:
-                img1, lines1 = draw_lines(img1)
-                img2, lines2 = draw_lines(img2)
-                corners1 = line_intersection(lines1)
-                corners2 = line_intersection(lines2)
-                # Ignoring intersections outside the image
-                w, h = img1.shape[:2]
-                corners1 = np.array([[corner] for corner in corners1 if h > corner[0] > 0 and w > corner[1] > 0])
-                corners2 = np.array([[corner] for corner in corners2 if h > corner[0] > 0 and w > corner[1] > 0])
-            else:
-                global cutout_corners1 # will be deleted after iteration over images
-                try:  # fuck it!
-                    _ = len(cutout_corners1)
-                except Exception:
-                    cutout_corners1 = []
 
-                def mouse_callback(event, x, y, flags, param):
-                    global cutout_corners1
-                    if event == cv2.EVENT_LBUTTONDOWN:
-                        cutout_corners1.append((x, y))
-                        print("Left mouse button pressed!", cutout_corners1)
+            img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+            img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
-                if len(cutout_corners1) < 2:
-                    while True:
-                        for point in cutout_corners1[-2:]:
-                            cv2.circle(img1, point, 2, (0, 255, 0), 2)
-                        cv2.putText(img1, f'Click on the corners of the chess board to cut out the image section',
-                                    (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
-                        cv2.imshow(f'Mirror', img1)
-                        cv2.setMouseCallback(f"Mirror", mouse_callback)
-                        key = cv2.waitKey(1)
-                        if key & 0xFF == 32:
-                            cv2.destroyWindow(f"Mirror")
-                            break
-                self.cutout_corners1 = cutout_corners1[-2:]
+            img1, lines1 = draw_lines(img1)
+            img2, lines2 = draw_lines(img2)
+            corners1 = line_intersection(lines1)
+            corners2 = line_intersection(lines2)
+            # Ignoring intersections outside the image
+            w, h = img1.shape[:2]
+            corners1 = np.array([[corner] for corner in corners1 if h > corner[0] > 0 and w > corner[1] > 0], dtype=np.float32)
+            corners2 = np.array([[corner] for corner in corners2 if h > corner[0] > 0 and w > corner[1] > 0], dtype=np.float32)
+            # Refining the predictions
+            print(corners1.shape)
+            corners1 = cv2.cornerSubPix(img1, corners1.reshape(-1, 1, 2), (11, 11), (-1, -1), criteria)
+            corners2 = cv2.cornerSubPix(img2, corners2.reshape(-1, 1, 2), (11, 11), (-1, -1), criteria)
 
-                cutout_corners1 = self.cutout_corners1
-                cc_arr = np.array(cutout_corners1[-2:], dtype=np.int32)
 
-                img1 = img1[cc_arr[:, 1].min(): cc_arr[:, 1].max(), cc_arr[:, 0].min(): cc_arr[:, 0].max()]
-                offset1 = cc_arr.min(axis=0)
+            def draw_and_switch(img1, img2, corners1, corners2):
 
-                img1= cv2.cvtColor(img1, cv2.COLOR_BGRA2GRAY)
-
-                cv2.putText(img1, f'Image section press any key to continue.', (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,
-                            (255, 255, 255), 1)
-                cv2.imshow("Cutout1", img1)
-                cv2.waitKey(0)
-                cv2.destroyWindow("Cutout1")
-
-                gray1 = img1
-                # localizing the chessboard corners in image-space.
-                ret, corners1 = cv2.findChessboardCorners(gray1 , (rows, columns), None)
-                if ret:
-                    # trying to improve the detection of the chessboard corners!
-                    corners1 = cv2.cornerSubPix(gray1, corners1, (11, 11), (-1, -1), criteria)
-                    # adjusting the corner coordinates for the scaling and the cutout
-                    corners1 = np.array([(np.array(coord) + offset1) / factor for (coord) in corners1], dtype=np.float32)
-                else:
-                    continue
-
-                # Now for the frontal camera
-                global cutout_corners2  # will be deleted after iteration over images
-                try:
-                    _ = len(cutout_corners2)
-                except Exception:
-                    cutout_corners2 = []
-
-                def mouse_callback(event, x, y, flags, param):
-                    global cutout_corners2
-                    if event == cv2.EVENT_LBUTTONDOWN:
-                        cutout_corners2.append((x, y))
-                        print("Left mouse button pressed!", cutout_corners2)
-
-                if len(cutout_corners2) < 2:
-                    while True:
-                        for point in cutout_corners2[-2:]:
-                            cv2.circle(img2, point, 2, (0, 255, 0), 2)
-                        cv2.putText(img2, f'Click on the corners of the chess board to cut out the image section',
-                                    (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
-                        cv2.imshow(f'Front', img2)
-                        cv2.setMouseCallback(f"Front", mouse_callback)
-                        key = cv2.waitKey(1)
-                        if key & 0xFF == 32:
-                            cv2.destroyWindow(f"Front")
-                            break
-                self.cutout_corners2 = cutout_corners2[-2:]
-
-                cutout_corners2 = self.cutout_corners2
-                cc_arr = np.array(cutout_corners2[-2:], dtype=np.int32)
-
-                img2 = img2[cc_arr[:, 1].min(): cc_arr[:, 1].max(), cc_arr[:, 0].min(): cc_arr[:, 0].max()]
-                offset2 = cc_arr.min(axis=0)
-
-                img2 = cv2.cvtColor(img2, cv2.COLOR_BGRA2GRAY)
-
-                cv2.putText(img2, f'Image section press any key to continue.', (10, 30), cv2.FONT_HERSHEY_COMPLEX,
-                            1,
-                            (255, 255, 255), 1)
-                cv2.imshow("Cutout1", img2)
-                cv2.waitKey(0)
-                cv2.destroyWindow("Cutout1")
-
-                gray2 = img2
-                # localizing the chessboard corners in image-space.
-                ret, corners2 = cv2.findChessboardCorners(gray2, (rows, columns), None)
-                if ret:
-                    # trying to improve the detection of the chessboard corners!
-                    corners1 = cv2.cornerSubPix(gray2, corners2, (11, 11), (-1, -1), criteria)
-                    # adjusting the corner coordinates for the scaling and the cutout
-                    corners2 = np.array([(np.array(coord) + offset2) / factor for (coord) in corners2],
-                                        dtype=np.float32)
-                else:
-                    continue
-
-            cv2.putText(img1, f's: switch order of all, l = switch lines',
-                        (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(0, 0, 255), 1)
-            for i, [corner] in enumerate(corners1):
-                cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
-                            (0, 0, 255), 1)
-
-            for i, [corner] in enumerate(corners2):
-                cv2.putText(img2, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
-                            (0, 0, 255), 1)
-            cv2.imshow(f'Detection 1', img1)
-            cv2.imshow(f'Detection 2', img2)
-            key = cv2.waitKey(0)
-
-            if key & 0xFF == ord('s'):  # press s to switch ordering of img1
-                cv2.destroyWindow(f'Detection 1')
-                corners1 = corners1[::-1]
-                # drawing the new corners
-                img1 = np.array(img1_old)
+                cv2.putText(img1, f's: switch order of all, l = switch lines',
+                            (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(0, 0, 255), 1)
                 for i, [corner] in enumerate(corners1):
-                    cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])),
-                                cv2.FONT_HERSHEY_COMPLEX,
-                                1,
+                    cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
+                                (0, 0, 255), 1)
+
+                for i, [corner] in enumerate(corners2):
+                    cv2.putText(img2, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
                                 (0, 0, 255), 1)
                 cv2.imshow(f'Detection 1', img1)
-                cv2.waitKey(0)
+                cv2.imshow(f'Detection 2', img2)
+                key = cv2.waitKey(0)
 
-            if key & 0xFF == ord("l"): # press l to switch lines in img1
-                cv2.destroyWindow(f"Detection 1")
-                corners1 = switch_rows(corners1, rows)
-                img1 = np.array(img1_old)
-                for i, [corner] in enumerate(corners1):
-                    cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])),
-                                cv2.FONT_HERSHEY_COMPLEX,
-                                1,
-                                (0, 0, 255), 1)
-                cv2.imshow(f'Detection 1', img1)
-                cv2.waitKey(0)
+                if key & 0xFF == ord('s'):  # press s to switch ordering of img1
+                    cv2.destroyWindow(f'Detection 1')
+                    corners1 = corners1[::-1]
+                    img1 = np.array(img1_old)
+                    return draw_and_switch(img1, img2, corners1, corners2)
 
+                if key & 0xFF == ord("l"): # press l to switch lines in img1
+                    cv2.destroyWindow(f"Detection 1")
+                    corners1 = switch_rows(corners1, rows)
+                    img1 = np.array(img1_old)
+                    return draw_and_switch(img1, img2, corners1, corners2)
+
+                return
+
+            draw_and_switch(img1, img2, corners1, corners2)
 
             # adjusting corner coordinates for scaling
             corners1 /= factor
@@ -492,11 +386,7 @@ class stereoCamera():
 
             cv2.destroyWindow(f'Detection 1')
             cv2.destroyWindow(f'Detection 2')
-        try:
-            del cutout_corners1
-            del cutout_corners2
-        except Exception:
-            pass
+
         # prerform stereo calibration on accumulated objectpoints
         stereocalibration_flags = cv2.CALIB_FIX_INTRINSIC
 
