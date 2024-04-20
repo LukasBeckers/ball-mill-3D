@@ -124,11 +124,12 @@ class stereoCamera():
                     cutout_corners.append((x, y))
                     print("Left mouse button pressed!", cutout_corners)
             if len(cutout_corners) <2:
+                img_show = np.array(img)
                 while True:
                     for point in cutout_corners[-2:]:
-                        cv2.circle(img, point, 2, (0,255, 0), 2)
-                    cv2.putText(img, f'Click on the corners of the chess board to cut out the image section', (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(255, 255, 255), 1)
-                    cv2.imshow(f'Camera: {cam}', img)
+                        cv2.circle(img_show, point, 2, (0,255, 0), 2)
+                    cv2.putText(img_show, f'Click on the corners of the chess board to cut out the image section', (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(255, 255, 255), 1)
+                    cv2.imshow(f'Camera: {cam}', img_show)
                     cv2.setMouseCallback(f"Camera: {cam}", mouse_callback)
                     key = cv2.waitKey(1)
                     if key & 0xFF == 32:
@@ -138,14 +139,13 @@ class stereoCamera():
 
             cutout_corners = self.cutout_corners
             cc_arr = np.array(cutout_corners[-2:], dtype=np.int32)
-
             img = img[cc_arr[:, 1].min() : cc_arr[:, 1].max(), cc_arr[:,0].min() : cc_arr[:,0].max()]
             offset = cc_arr.min(axis=0)
 
             img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-
-            cv2.putText(img, f'Image section {i} press any key to continue.', (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(255, 255, 255), 1)
-            cv2.imshow("Cutout", img)
+            img_show = np.array(img)
+            cv2.putText(img_show, f'Image section {i} press any key to continue.', (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(255, 255, 255), 1)
+            cv2.imshow("Cutout", img_show)
             cv2.waitKey(0)
             cv2.destroyWindow("Cutout")
 
@@ -213,7 +213,7 @@ class stereoCamera():
         cv2.destroyAllWindows()
         return
 
-    def stereo_calibrate(self, images, rows=8, columns=10, scaling=0.005, manual=True):
+    def stereo_calibrate(self, images, rows=8, columns=10, scaling=0.005):
         """
 
         """
@@ -299,7 +299,7 @@ class stereoCamera():
         rows -= 1
         columns -= 1
 
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100000, 0.0000001)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.0001)
 
         # coordinates of squares in the checkerboard world space
         objp = np.zeros((rows * columns, 3), np.float32)
@@ -372,9 +372,9 @@ class stereoCamera():
                     img1 = np.array(img1_old)
                     return draw_and_switch(img1, img2, corners1, corners2)
 
-                return
+                return corners1, corners2
 
-            draw_and_switch(img1, img2, corners1, corners2)
+            corners1, corners2 = draw_and_switch(img1, img2, corners1, corners2)
 
             # adjusting corner coordinates for scaling
             corners1 /= factor
@@ -405,22 +405,24 @@ class stereoCamera():
                                                                       np.array(self.conf["distortion"][1]),
                                                                       (width, height),
                                                                       criteria=criteria,
-                                                                      flags=stereocalibration_flags)
-
+                                                                      #flags=stereocalibration_flags)
+                                                                      flags=None)
         # Matrix that rotates the coordinate system of the second camera to match the first.
         self.conf["rotation_matrix"][0] = R
         # Matrix that translates the coordinate system of the second camera to match the first.
         self.conf["translation_matrix"][0] = T
         self.conf["stereo_calibration_error"][0] = ret
-
+        self.conf["camera_matrix"][0] = CM1
+        self.conf["camera_matrix"][1] = CM2
 
         print(f'Stereo-calibration error: {ret}')
         print(f'Translation Matrix: {T}')
         print(f'Rotation Matrix: {R}')
-
+        print(f"New Camera Matrix Mirror: {CM1}")
+        print(f"New Camera Matrix Front: {CM2}")
 
         cv2.destroyAllWindows()
-        return
+        return objpoints, imgpoints_1, imgpoints_2, images
 
     def set_anchor_point(self, img, cam):
         """
