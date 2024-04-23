@@ -1,4 +1,5 @@
 .idea
+.ipynb_checkpoints
 venv
 videos/*
 videos/.gitkeep
@@ -15,3 +16,5 @@ label_studio/*
 train_samples/*
 runs/*
 utils/__pycache__/*
+labeled_chess_boards/*
+labeled_chess_boards/.gitkeep

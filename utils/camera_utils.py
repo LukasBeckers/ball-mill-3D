@@ -1,14 +1,186 @@
 import cv2
 import torch
-
-from utils.video_utils import *
+import uuid
+import pickle as pk
 from collections import defaultdict
 import yaml
 from yaml import SafeLoader
 import os
 
+from utils.video_utils import *
+
 # Get the directory of the current script
 current_dir = os.path.dirname(os.path.abspath(__file__))
+
+
+def switch_rows(corners, len_row):
+    "Switches the rows in the chessboard corner detection"
+    switched_corners = []
+    row = []
+    for corner in corners:
+        row.insert(0, corner)
+        if len(row) == len_row:
+            switched_corners.extend(row)
+            row = []
+    return np.array(switched_corners)
+
+
+def draw_lines(img):
+    global line  # line = (x1, y1, x2, y2)
+    line = []
+    lines = []
+    def mouse_callback(event, x, y, flags, param):
+        global line
+        if event == cv2.EVENT_LBUTTONDOWN:
+            line.extend((x, y))
+            print("Current line:", line)
+        if event == cv2.EVENT_RBUTTONDOWN:
+            line.pop()
+            line.pop()
+            print("Removing last point. Line:", line)
+
+    img_old = np.array(img)
+    while True:
+        cv2.putText(img, f'Left Click: line point, right: undo point, R: undo line, space: finish', (10, 30),
+                    cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
+        cv2.imshow("Drawing Lines", img)
+        cv2.setMouseCallback("Drawing Lines", mouse_callback)
+        key = cv2.waitKey(1)
+        if key & 0xFF == ord('r'):
+            print("Removing last line")
+            lines.pop()
+            img = np.array(img_old)
+            for l in lines:
+                cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
+        if key & 0xFF == 32:
+            # print("Escaping Line drawing")
+            cv2.destroyWindow("Drawing Lines")
+            break
+        if len(line) == 4:
+            lines.append(line)
+            line = []
+            img = np.array(img_old)
+            for l in lines:
+                cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
+    return img_old, lines
+
+
+def line_intersection(lines):
+    """
+    Finds the intersection of two lines given in Hesse normal form.
+    """
+    intersections = []
+    for i, line1 in enumerate(lines):
+        for line2 in lines[i + 1:]:
+            x1, y1, x2, y2 = line1
+            x3, y3, x4, y4 = line2
+            px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / (
+                    (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) + 1e-10)
+            py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / (
+                    (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) + 1e-10)
+            intersections.append((px, py))
+    return np.array(intersections)
+
+
+def label_corners(img):
+    """
+    Allows the user to draw lines on an image, the line intersection will be interpreted as
+    corners in a chessboard pattern.
+    """
+    # Draws the lines (by user)
+    lines, img = draw_lines(img)
+    # Calculates the corners via line-intersection
+    corners = line_intersection(lines)
+    w, h = img.shape[:2]
+    # Drops corners that are outside the image
+    corners = np.array([[corner] for corner in corners if h > corner[0] > 0 and w > corner[1] > 0], dtype=np.float32)
+
+    # Refining the corner detections
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.00001)
+    corners = cv2.cornerSubPix(img, corners.reshape(-1, 1, 2), (11, 11), (-1, -1), criteria)
+    # Saves the corners and the image for later usage in a corner-detection project.
+    os.makedirs(f'{current_dir}/../labeled_chess_boards/images')
+    os.makedirs(f'{current_dir}/../labeled_chess_boards/corners')
+    id = uuid.uuid4()
+    cv2.imwrite(f'{current_dir}/../labeled_chess_boards/images/{id}.jpg',
+                img,
+                [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+    np.save(f'{current_dir}/../labeled_chess_boards/corners/{id}.npy', corners)
+    return corners
+
+
+def draw_cutout_corners(img, cam):
+    """
+    Left-click on the image to mark a point, two points will span a rectangle, which will be used
+    as a stencil to create cutouts from the image.
+
+    You can draw as many points as you like, only the last two inputs will be used.
+    """
+    def mouse_callback(event, x, y, flags, param):
+        global cutout_corners
+        if event == cv2.EVENT_LBUTTONDOWN:
+            cutout_corners.append((x, y))
+            print("Left mouse button pressed!", cutout_corners)
+
+    if len(cutout_corners) < 2:
+        img_show = np.array(img)
+        while True:
+            for point in cutout_corners[-2:]:
+                cv2.circle(img_show, point, 2, (0, 255, 0), 2)
+            cv2.putText(img_show,
+                        f'Click on the corners of the chess board to cut out the image section',
+                        (10, 30),
+                        cv2.FONT_HERSHEY_COMPLEX,
+                        1,
+                        (255, 255, 255),
+                        1)
+            cv2.imshow(f'Camera: {cam}', img_show)
+            cv2.setMouseCallback(f"Camera: {cam}", mouse_callback)
+            key = cv2.waitKey(1)
+            # Press space to quit after drawing the points
+            if key & 0xFF == 32:
+                cv2.destroyWindow(f"Camera: {cam}")
+                break
+    return np.array(cutout_corners[-2:], dtype=np.int32)
+
+
+def show_and_switch(img1, img2, corners1, corners2, rows, columns):
+    img1_old = np.array(img1)
+    cv2.putText(img1, f's: switch order of all, l = switch lines',
+                (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 1)
+    try:
+        cv2.drawChessboardCorners(img1, (rows, columns), corners1, True)
+    except Exception:
+        pass
+    for i, [corner] in enumerate(corners1):
+        cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
+                    (0, 0, 255), 1)
+    try:
+        cv2.drawChessboardCorners(img2, (rows, columns), corners2, True)
+    except Exception:
+        pass
+    for i, [corner] in enumerate(corners2):
+        cv2.putText(img2, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
+                    (0, 0, 255), 1)
+    cv2.imshow(f'Detection 1', img1)
+    cv2.imshow(f'Detection 2', img2)
+    key = cv2.waitKey(0)
+
+    if key & 0xFF == ord('s'):  # press s to switch ordering of img1
+        cv2.destroyWindow(f'Detection 1')
+        corners1 = corners1[::-1]
+        img1 = np.array(img1_old)
+        return show_and_switch(img1, img2, corners1, corners2)
+
+    if key & 0xFF == ord("l"):  # press l to switch lines in img1
+        cv2.destroyWindow(f'Detection 1')
+        corners1 = switch_rows(corners1, rows)
+        img1 = np.array(img1_old)
+        return show_and_switch(img1, img2, corners1, corners2)
+
+    cv2.destroyWindow(f'Detection 1')
+    cv2.destroyWindow(f'Detection 2')
+    return corners1, corners2
 
 
 class stereoCamera():
@@ -16,44 +188,48 @@ class stereoCamera():
         """
         Possible **kwargs are all dicts with the keys = int(camera_index) ie. 0 or 1:
 
-        camera_size
-        anchor_point
-        projection_error
-        camera_matrix
-        optimized_camera_matrix
-        distortion
-        """
+        camera_size e.g. camera_size={0: [100, 100], 1:[100,100]}
+        other possible / meaningfull kwargs_dicts are:
 
+            anchor_point
+            projection_error
+            camera_matrix
+            optimized_camera_matrix
+            distortion
+        """
         def recursive_defaultdict():
             return defaultdict(lambda: None)
 
         self.conf = defaultdict(recursive_defaultdict,
                                 {key: defaultdict(lambda: None, {k: v for k, v in value.items()})
                                  for key, value in kwargs.items()})
-
         self.name = name
 
     def save_to_yaml(self, filename="camera_config.yaml"):
-
+        """
+        Saves the calculated parameters like "camera_matrix" etc., stored in self.conf to a yaml file
+        the yaml file can be found at BallMill3d/config/<config_name>.yaml
+        """
         def convet_to_list(obj):
+            # converts the default dict to a list.
             if isinstance(obj, (list, tuple)):
                 return [convet_to_list(o) for o in obj]
             elif isinstance(obj, (np.ndarray, torch.Tensor)):
                 return obj.tolist()
             return obj
-
         data_to_save = {'name': self.name}
         for key, value in self.conf.items():
             value = {k: convet_to_list(v) for k, v in value.items()}
             data_to_save[key] = value
-
         # Writing to a yaml file
         filename = f"config/{filename}"
         with open(os.path.join(os.path.dirname(current_dir), filename), 'w') as file:
             yaml.dump(data_to_save, file)
 
     def load_from_yaml(self, filename=f"camera_config.yaml"):
-        # Reading from a yaml file
+        """
+        Loads the configs stored to a yaml file by "save_to_yaml" method
+        """
         filename = f"config/{filename}"
         with open(os.path.join(os.path.dirname(current_dir), filename), 'r') as file:
             data_loaded = yaml.load(file, Loader=SafeLoader)
@@ -67,335 +243,191 @@ class stereoCamera():
                                 {key: defaultdict(lambda: None, {k: v for k, v in value.items()})
                                  for key, value in data_loaded.items()})
 
-    @staticmethod
-    def recursive_defaultdict():
-        return defaultdict(lambda: None)
-
-    def __str__(self):
-        return self.name
-
     def undistort_image(self, img, cam):
         """
-        Undistorts an image using the camera_matrix and the distortion values obtained by camera calibration.
-
-        :return:                Undistorted image
+        Un-distorts an image using the camera_matrix and the distortion values obtained by camera calibration.
         """
-        img = cv2.undistort(img, self.conf["camera_matrix"][cam], self.conf["distortion"][cam], None,
-                            self.conf["optimized_camera_matrix"][cam])
+
+        optim_camera_matrix = self.conf["optimized_camera_matrix"][cam]
+        img = cv2.undistort(img, np.array(self.conf["camera_matrix"][cam]),
+                            np.array(self.conf["distortion"][cam]),
+                            None,
+                            np.array(optim_camera_matrix))
         return img
 
-    def calibrate(self, images, cam, rows=8, columns=10, scaling=0.005):
+    def calibrate(self, image_sets, cam, rows=8, columns=10, scaling=0.005):
+        """
+        Calibrates a single camera of this stereoCamera instance.
+        rows and columns need to be the real number of rows and columns in the chessboard-pattern
 
-        images = [self(img)[cam] for img in images]
-
+        image_sets are lists of lists of images, use one list of image for each video
+        """
         # Only chessboard corners with all four sides being squares can be detected. (B W) Therefore the detectable
-        # chessboard is one smaller in number of rows and columns.                   (W B)
+        # chessboard rows and columns are one less.                                  (W B)
         rows -= 1
         columns -= 1
-        # termination criteria
-        # If no chessboard-pattern is detected, change this... Don't ask me what to change about it!
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-
-        # prepare object points, lower left corner of chessboard will be world coordinate (0, 0, 0)
-        objp = np.zeros((columns * rows, 3), np.float32)
-        objp[:, :2] = np.mgrid[0:rows, 0:columns].T.reshape(-1, 2)
-        objp = scaling * objp
-
         # Chessboard pixel coordinates (2D)
         imgpoints = []
         # Chessboard pixel coordinates in world-space (3D). Coordinate system defined by chessboard.
         objpoints = []
 
-        for i, img in enumerate(images):
-            img_old = np.array(img)
+        for images in image_sets:
+            # Generating the cutouts based on the camera-index
+            images = [self(img)[cam] for img in images]
+            # height and width are used in the calibration call
+            height = images[0].shape[0]
+            width = images[0].shape[1]
+            # prepare object points, lower left corner of chessboard will be world coordinate (0, 0, 0)
+            objp = np.zeros((columns * rows, 3), np.float32)
+            objp[:, :2] = np.mgrid[0:rows, 0:columns].T.reshape(-1, 2)
+            objp = scaling * objp
             factor = 4
-
-            img = cv2.resize(img, np.array(img.shape[:2])[::-1] * factor)
-
-            global cutout_corners # will be deleted after iteration over images
-            try: # fuck it!
-                _ = len(cutout_corners)
-            except Exception:
-                cutout_corners = []
-
-            def mouse_callback(event, x, y, flags, param):
-                global cutout_corners
-                if event == cv2.EVENT_LBUTTONDOWN:
-                    cutout_corners.append((x, y))
-                    print("Left mouse button pressed!", cutout_corners)
-            if len(cutout_corners) <2:
-                img_show = np.array(img)
-                while True:
-                    for point in cutout_corners[-2:]:
-                        cv2.circle(img_show, point, 2, (0,255, 0), 2)
-                    cv2.putText(img_show, f'Click on the corners of the chess board to cut out the image section', (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(255, 255, 255), 1)
-                    cv2.imshow(f'Camera: {cam}', img_show)
-                    cv2.setMouseCallback(f"Camera: {cam}", mouse_callback)
-                    key = cv2.waitKey(1)
-                    if key & 0xFF == 32:
-                        cv2.destroyWindow(f"Camera: {cam}")
-                        break
-            self.cutout_corners = cutout_corners[-2:]
-
-            cutout_corners = self.cutout_corners
-            cc_arr = np.array(cutout_corners[-2:], dtype=np.int32)
-            img = img[cc_arr[:, 1].min() : cc_arr[:, 1].max(), cc_arr[:,0].min() : cc_arr[:,0].max()]
-            offset = cc_arr.min(axis=0)
-
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
-            img_show = np.array(img)
-            cv2.putText(img_show, f'Image section {i} press any key to continue.', (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(255, 255, 255), 1)
+            images = [cv2.resize(img, np.array(img.shape[:2])[::-1] * factor) for img in images]
+            # Copies the scaled images for later usage
+            images_old = np.array(images)
+            # Drawing the cutout_corners
+            cc = draw_cutout_corners(images[0], cam)
+            offset = cc.min(axis=0)
+            # Uses cc to generate image cutouts
+            images = [img[cc[:, 1].min():cc[:, 1].max(), cc[:, 0].min():cc[:, 0].max()] for img in images]
+            # Converts images to grayscale for chessboard_corner detection
+            images = [cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY) for img in images]
+            # Shows one example from the image cutouts for evaluation
+            img_show = np.array(images[0])
+            cv2.putText(img_show,
+                        f'Image section {i} press any key to continue.',
+                        (10, 30),
+                        cv2.FONT_HERSHEY_COMPLEX,
+                        1,
+                        (255, 255, 255),
+                        1)
             cv2.imshow("Cutout", img_show)
             cv2.waitKey(0)
             cv2.destroyWindow("Cutout")
+            # Tries to detect the corners
+            corners = [cv2.findChessboardCorners(img, (rows, columns), None) for img in images]
+            # Removes the images of unsuccessful corner-predictions. res[1] = corner-coordinates, res[0] = ret
+            images = [images[i] for i, res in enumerate(corners) if res[0]]
+            images_old = [images_old[i] for i, res in enumerate(corners) if res[0]]
+            # Removes unsuccessful detections. res[1] = corner-coordinates, res[0] = ret
+            corners = [res[1] for res in corners if res[0]]
+            # skips following steps if now corners were detected
+            if len(corners) == 0:
+                continue
 
-            gray = img
-            # localizing the chessboard corners in image-space.
-            ret, corners = cv2.findChessboardCorners(gray, (rows, columns), None)
-            if ret:
-                # trying to improve the detection of the chessboard corners!
-                corners = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-                # adjusting the corner coordinates for the scaling and the cutout
-                corners = np.array([(np.array(coord) + offset) / factor for (coord) in corners], dtype=np.float32)
+            # Parameter for chessboard detection refinement
+            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+            # Refines the corner predictions
+            corners = [cv2.cornerSubPix(img, crnrs, (11, 11), (-1, -1), criteria)
+                       for img, crnrs in zip(images, corners)]
+            # Adjusts the corner-coordinates for the scaling and the cutout-offset.
+            corners = [np.array([(np.array(coord) + offset) / factor for (coord) in crnrs], dtype=np.float32)
+                       for crnrs in corners]
+            # Shows one example of the drawn chessboard corners
+            cv2.drawChessboardCorners(images_old[0],
+                                      (rows, columns),
+                                      corners[0] * factor,
+                                      True)
+            for i, [corner] in enumerate(corners[0]):
+                cv2.putText(images_old[0],
+                            f'{i}',
+                            (int(corner[0] * factor),
+                             int(corner[1]) * factor),
+                            cv2.FONT_HERSHEY_COMPLEX,
+                            1,
+                            (255, 255, 255),
+                            1)
 
-                img = np.array(img_old)
-                # resizing again to properly display the corners
-                img = cv2.resize(img, np.array(img.shape[:2])[::-1] * factor)
-                cv2.drawChessboardCorners(img, (rows, columns), corners*factor, ret)
-                for i, [corner] in enumerate(corners):
-                    cv2.putText(img, f'{i}', (int(corner[0]*factor), int(corner[1])*factor), cv2.FONT_HERSHEY_COMPLEX,
-                                1, (0, 0, 255), 1)
+            cv2.imshow(f'Chessboard corners; Camera: {self}', images_old[0])
+            key = cv2.waitKey(0)
+            cv2.destroyWindow(f'Chessboard corners; Camera: {self}')
+            objpoints.extend([objp for _ in corners])
+            objpoints.extend(corners)
 
-                cv2.imshow(f'Chessboard corners; Camera: {self}', img)
-                key = cv2.waitKey(0)
-                if key & 0xFF == ord('s'):  # press "s" to switch the ordering of the corners
-                    cv2.destroyWindow(f'Chessboard corners; Camera: {self}')
-                    corners = corners[::-1]
-
-                    # drawing the new corners
-                    img = np.array(img_old)
-                    img = cv2.resize(img, np.array(img.shape[:2])[::-1] * factor)
-                    cv2.drawChessboardCorners(img, (rows, columns), corners*factor, ret)
-                    for i, [corner] in enumerate(corners):
-                        cv2.putText(img, f'{i}', (int(corner[0] * factor), int(corner[1]) * factor),
-                                    cv2.FONT_HERSHEY_COMPLEX, 1,
-                                    (0, 0, 255), 1)
-                    cv2.imshow(f'Chessboard corners; Camera: {self}', img)
-                    cv2.waitKey(0)
-                    cv2.destroyWindow(f'Chessboard corners; Camera: {self}')
-                objpoints.append(objp)
-                imgpoints.append(corners)
-        del cutout_corners
         if imgpoints == []:
             print("No Corners were detected, failed calibration")
             return
-
-        height = img.shape[0]
-        width = img.shape[1]
-
-        ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, (width, height), None, None)
-        # saving the optimized camera matrix
-        height, width = img.shape[:2]
+        # Performs the calibration
+        ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(np.array(objpoints),
+                                                           np.array(imgpoints),
+                                                           (width, height),
+                                                           None,
+                                                           None)
+        # Calculates the optimized camera matrix
         optimized_camera_matrix, roi = cv2.getOptimalNewCameraMatrix(mtx, dist, (width, height), 1,
                                                                    (width, height))
-
         print('rmse:', ret)
         print('camera matrix:\n', mtx)
         print('optimized camera matrix:\n', optimized_camera_matrix)
         print('distortion coeffs:\n', dist)
-
         self.conf["projection_error"][cam] = ret
         self.conf["camera_matrix"][cam] = mtx
         self.conf["optimized_camera_matrix"][cam] = optimized_camera_matrix
         self.conf["distortion"][cam] = dist
-
-        # closing the window after calibration
-        cv2.destroyAllWindows()
         return
 
-    def stereo_calibrate(self, images, rows=8, columns=10, scaling=0.005):
+    def stereo_calibrate(self,
+                         images,
+                         rows=8,
+                         columns=10,
+                         scaling=0.005,
+                         undistort=True,
+                         stereocalibration_flags = cv2.CALIB_FIX_PRINCIPAL_POINT,
+                         corner_detection=label_corners):
         """
-
+        Performs stereo calibration for the stereoCamera instance
         """
         assert self.conf["camera_matrix"][0] is not None and self.conf["camera_matrix"][1] is not None, \
             "Calibrate both cameras first!"
-
-        def switch_rows(corners, len_row):
-            "Switches the rows in the chessboard corner detection"
-
-            switched_corners = []
-            row = []
-            for corner in corners:
-                row.insert(0, corner)
-                if len(row) == len_row:
-                    switched_corners.extend(row)
-                    row = []
-            return np.array(switched_corners)
-
-        def draw_lines(img):
-            global line # line = (x1, y1, x2, y2)
-            line = []
-            lines = []
-            def mouse_callback(event, x, y, flags, param):
-                global line
-                if event == cv2.EVENT_LBUTTONDOWN:
-                    line.extend((x, y))
-                    print("Current line:", line)
-                if event == cv2.EVENT_RBUTTONDOWN:
-                    line.pop()
-                    line.pop()
-                    print("Removing last point. Line:", line)
-
-
-            img_old = np.array(img)
-            while True:
-                cv2.putText(img, f'Left Click: line point, right: undo point, R: undo line, space: finish', (10, 30),
-                            cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
-
-                cv2.imshow("Drawing Lines", img)
-                cv2.setMouseCallback("Drawing Lines", mouse_callback)
-                key = cv2.waitKey(1)
-                if key & 0xFF == ord('r'):
-                    print("Removing last line")
-                    lines.pop()
-                    img = np.array(img_old)
-                    for l in lines:
-                        cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
-
-                if key & 0xFF == 32:
-                    #print("Escaping Line drawing")
-                    cv2.destroyWindow("Drawing Lines")
-                    break
-                if len(line) == 4:
-                    lines.append(line)
-                    line = []
-                    img = np.array(img_old)
-                    for l in lines:
-                        cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
-                    #print("Line drawn")
-
-            return img_old, lines
-
-        def line_intersection(lines):
-            """Finds the intersection of two lines given in Hesse normal form."""
-
-            intersections = []
-            for i, line1 in enumerate(lines):
-                for line2 in lines[i + 1:]:
-
-                    x1, y1, x2, y2 = line1
-                    x3, y3, x4, y4 = line2
-
-                    px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / (
-                                (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) + 1e-10)
-                    py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / (
-                                (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) + 1e-10)
-
-
-                    intersections.append((px, py))
-            return np.array(intersections)
-
         # open cv can only detect inner corners, so reducing the rows and columns by one
         rows -= 1
         columns -= 1
-
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.0001)
-
         # coordinates of squares in the checkerboard world space
         objp = np.zeros((rows * columns, 3), np.float32)
         objp[:, :2] = np.mgrid[0:rows, 0:columns].T.reshape(-1, 2)
         objp = objp * scaling
-
         # Pixel coordinates in image space of checkerboard
         imgpoints_1 = []
         imgpoints_2 = []
-
         # World coordinates of the checkerboard. (World coordinate system has its origin in the bottom left corner of
-        # the checkerboard.
+        # the checkerboard)
         objpoints = []
-
-        for img in images:
-            img1, img2 = self(img)
-
-            assert img1.shape == img2.shape, "For both cameras must have the same resolution for stereo-calibration"
-
-            height, width = img1.shape[:2]
-
-            factor = 3
-
-            img1 = cv2.resize(img1, np.array(img1.shape[:2])[::-1] * factor)
-            img2 = cv2.resize(img2, np.array(img2.shape[:2])[::-1] * factor)
-            img1_old = np.array(img1)
-            img2_old = np.array(img2)
-
-            img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-            img2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
-
-            img1, lines1 = draw_lines(img1)
-            img2, lines2 = draw_lines(img2)
-            corners1 = line_intersection(lines1)
-            corners2 = line_intersection(lines2)
-            # Ignoring intersections outside the image
-            w, h = img1.shape[:2]
-            corners1 = np.array([[corner] for corner in corners1 if h > corner[0] > 0 and w > corner[1] > 0], dtype=np.float32)
-            corners2 = np.array([[corner] for corner in corners2 if h > corner[0] > 0 and w > corner[1] > 0], dtype=np.float32)
-            # Refining the predictions
-            print(corners1.shape)
-            corners1 = cv2.cornerSubPix(img1, corners1.reshape(-1, 1, 2), (11, 11), (-1, -1), criteria)
-            corners2 = cv2.cornerSubPix(img2, corners2.reshape(-1, 1, 2), (11, 11), (-1, -1), criteria)
-
-
-            def draw_and_switch(img1, img2, corners1, corners2):
-
-                cv2.putText(img1, f's: switch order of all, l = switch lines',
-                            (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1,(0, 0, 255), 1)
-                for i, [corner] in enumerate(corners1):
-                    cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
-                                (0, 0, 255), 1)
-
-                for i, [corner] in enumerate(corners2):
-                    cv2.putText(img2, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 1,
-                                (0, 0, 255), 1)
-                cv2.imshow(f'Detection 1', img1)
-                cv2.imshow(f'Detection 2', img2)
-                key = cv2.waitKey(0)
-
-                if key & 0xFF == ord('s'):  # press s to switch ordering of img1
-                    cv2.destroyWindow(f'Detection 1')
-                    corners1 = corners1[::-1]
-                    img1 = np.array(img1_old)
-                    return draw_and_switch(img1, img2, corners1, corners2)
-
-                if key & 0xFF == ord("l"): # press l to switch lines in img1
-                    cv2.destroyWindow(f"Detection 1")
-                    corners1 = switch_rows(corners1, rows)
-                    img1 = np.array(img1_old)
-                    return draw_and_switch(img1, img2, corners1, corners2)
-
-                return corners1, corners2
-
-            corners1, corners2 = draw_and_switch(img1, img2, corners1, corners2)
-
-            # adjusting corner coordinates for scaling
-            corners1 /= factor
-            corners2 /= factor
-
+        # Creates the two camera-outputs for each image in images
+        images = [self(image) for image in images]
+        if undistort:
+            # Undistorts the images
+            images = [[self.undistort_image(img1, 0), self.undistort_image(img1, 1)]
+                      for img1, img2 in images]
+        assert images[0][0].shape == images[0][1].shape, \
+            "For both cameras must have the same resolution for stereo-calibration"
+        # heigth and width will be used in stereocalibration
+        height, width = images[0][1].shape[:2]
+        # Rescales the images for better corner labeling
+        factor = 3
+        images = [[cv2.resize(img1, np.array(img1.shape[:2])[::-1] * factor),
+                   cv2.resize(img2, np.array(img2.shape[:2])[::-1] * factor)]
+                  for img1, img2 in images]
+        # Copies the scales images for later usage
+        images_old = np.array(images)
+        # Chessboard corner detection or labeling
+        corners = [[corner_detection(img1), corner_detection(img2)] for img1, img2 in images]
+        # Letting the users switch the corners of img1 to match them with img2
+        corners = [draw_cutout_corners(img1, img2, corners1, corners2) for [img1, img2], [corners1, corners2]
+                   in zip(images, corners)]
+        # rescaling the corners
+        corners = [[corners1/factor, corners2/factor] for corners1, corners2 in corners]
+        for corners1, corners2 in corners:
             objpoints.append(objp)
             imgpoints_1.append(corners1)
             imgpoints_2.append(corners2)
-
-            cv2.destroyWindow(f'Detection 1')
-            cv2.destroyWindow(f'Detection 2')
-
         # prerform stereo calibration on accumulated objectpoints
-        stereocalibration_flags = cv2.CALIB_FIX_INTRINSIC
-
         imgpoints_1 = np.array(imgpoints_1, dtype=np.float32)
         imgpoints_1 = np.swapaxes(imgpoints_1, axis1=1, axis2=2)
         imgpoints_2 = np.array(imgpoints_2, dtype=np.float32)
         imgpoints_2 = np.swapaxes(imgpoints_2, axis1=1, axis2=2)
         objpoints = np.array(objpoints)
         objpoints = np.expand_dims(objpoints, axis=1)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10000, 0.00001)
         ret, CM1, dist1, CM2, dist2, R, T, E, F = cv2.stereoCalibrate(objpoints,
                                                                       imgpoints_1,
                                                                       imgpoints_2,
@@ -405,8 +437,13 @@ class stereoCamera():
                                                                       np.array(self.conf["distortion"][1]),
                                                                       (width, height),
                                                                       criteria=criteria,
-                                                                      #flags=stereocalibration_flags)
-                                                                      flags=None)
+                                                                      flags=stereocalibration_flags)
+
+        
+        optimized_camera_matrix1, roi = cv2.getOptimalNewCameraMatrix(CM1, np.array(self.conf["distortion"][0]), (width, height), 1,
+                                                                   (width, height))
+        optimized_camera_matrix2, roi = cv2.getOptimalNewCameraMatrix(CM2, np.array(self.conf["distortion"][1]), (width, height), 1,
+                                                                   (width, height))
         # Matrix that rotates the coordinate system of the second camera to match the first.
         self.conf["rotation_matrix"][0] = R
         # Matrix that translates the coordinate system of the second camera to match the first.
@@ -414,23 +451,19 @@ class stereoCamera():
         self.conf["stereo_calibration_error"][0] = ret
         self.conf["camera_matrix"][0] = CM1
         self.conf["camera_matrix"][1] = CM2
-
+        self.conf["optimized_camera_matrix"][0] = optimized_camera_matrix1
+        self.conf["optimized_camera_matrix"][1] = optimized_camera_matrix2
         print(f'Stereo-calibration error: {ret}')
         print(f'Translation Matrix: {T}')
         print(f'Rotation Matrix: {R}')
         print(f"New Camera Matrix Mirror: {CM1}")
         print(f"New Camera Matrix Front: {CM2}")
-
         cv2.destroyAllWindows()
         return objpoints, imgpoints_1, imgpoints_2, images
 
     def set_anchor_point(self, img, cam):
         """
         Set an anchor point on the image using the mouse click.
-        
-        Parameters:
-        img (numpy.ndarray): Frame from video.
-        cam (int): Number of the camera (0 or 1) for which to set the anchor point.
         """
         anchor_point = None
 
@@ -462,7 +495,9 @@ class stereoCamera():
 
 
     def draw_camera_region(self, img):
-
+        """
+        Draws the camera regions for inspection based on the anchor points and the camera-size
+        """
         for anchor_point in self.conf["anchor_point"].values():
             # Drawing camera
             start_point = anchor_point - np.array(self.conf["camera_size"][0])/2
@@ -503,49 +538,4 @@ class stereoCamera():
         return frame0, frame1
 
 if __name__=="__main__":
-
-    sC = stereoCamera(camera_size={0: (480, 240), 1: (480, 240)},
-                      anchor_point={0: (587, 269), 1: (598, 433)},
-                      camera_matrix={0: np.array([[2.24579312e+03, 0.00000000e+00, 6.06766474e+02],
-                                                  [0.00000000e+00, 3.18225724e+03, 2.87228912e+02],
-                                                  [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
-                                     1: np.array([[9.17450924e+02, 0.00000000e+00, 5.97492459e+02],
-                                                  [0.00000000e+00, 1.08858369e+03, 2.96145751e+02],
-                                                  [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])},
-                      optimized_camera_matrix={0: np.array([[1.98885152e+03, 0.00000000e+00, 5.83904948e+02],
-                                                            [0.00000000e+00, 2.71756632e+03, 3.41261625e+02],
-                                                            [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]]),
-                                               1: np.array([[9.35319179e+02, 0.00000000e+00, 5.90025655e+02],
-                                                            [0.00000000e+00, 1.09136910e+03, 2.97696817e+02],
-                                                            [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])},
-                      projection_error={0: 0.26768362133770185, 1: 0.29408707559840946},
-                      distortion={
-                          0: np.array(
-                              [[-1.53486495e+00, 1.95803727e+01, 1.63594781e-01, -2.81574724e-02, -1.10093707e+02]]),
-                          1: np.array([[0.03667417, 0.10305058, 0.00557331, -0.00655738, -0.16404791]])},
-                      stereo_calibration_error={0: 0.6988643727550614},
-                      translation_matrix={0: [[-0.60330682], [-0.39384531], [1.07405106]]},
-                      rotation_matrix={0: [[0.73971458, 0.1145444, 0.66310023],
-                                           [-0.09028238, - 0.95960383, 0.26647622],
-                                           [0.66683688, - 0.25698261, - 0.69949161]]}
-                      )
-    sC = stereoCamera(camera_size={0: (480, 240), 1: (480, 240)})
-    vL = videoLoader()
-    vL.load_video("../videos/WhatsApp Video 2024-04-02 at 6.40.29 PM.mp4")
-    frame = vL[10]
-    sC.set_anchor_point(frame, 0)
-    sC.set_anchor_point(frame, 1)
-    frames = vL[:2]
-
-    for frame in frames[:1]:
-        frame = sC.draw_camera_region(frame)
-        cv2.imshow("Frame", frame)
-        frame0, frame1 = sC(frame)
-        cv2.imshow("frame0", frame0)
-        cv2.imshow("frame1", frame1)
-        cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-    #sC.calibrate(frames, 0)
-    #sC.calibrate(frames, 1)
-    #sC.stero_calibrate(frames)
+    pass
