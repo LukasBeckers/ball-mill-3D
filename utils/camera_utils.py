@@ -34,21 +34,20 @@ def draw_lines(img):
         if event == cv2.EVENT_LBUTTONDOWN:
             line.extend((x, y))
             print("Current line:", line)
-        if event == cv2.EVENT_RBUTTONDOWN:
-            line.pop()
-            line.pop()
-            print("Removing last point. Line:", line)
 
     img_old = np.array(img)
     while True:
-        cv2.putText(img, f'Left Click: line point, right: undo point, R: undo line, space: finish', (10, 30),
+        cv2.putText(img, f'Left Click: line point, R: undo line, space: finish', (10, 30),
+                    cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
+        cv2.putText(img, f'R: undo line, space: finish', (10, 60),
                     cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
         cv2.imshow("Drawing Lines", img)
         cv2.setMouseCallback("Drawing Lines", mouse_callback)
         key = cv2.waitKey(1)
         if key & 0xFF == ord('r'):
             print("Removing last line")
-            lines.pop()
+            if len(lines) > 0:
+                lines.pop()
             img = np.array(img_old)
             for l in lines:
                 cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
@@ -94,17 +93,17 @@ def label_corners(img):
     w, h = img.shape[:2]
     # Drops corners that are outside the image
     corners = np.array([[corner] for corner in corners if h > corner[0] > 0 and w > corner[1] > 0], dtype=np.float32)
-    print("Corners", corners, corners.shape)
     # Refining the corner detections
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.00001)
     corners = cv2.cornerSubPix(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), corners.reshape(-1, 1, 2), (11, 11), (-1, -1), criteria)
     # Saves the corners and the image for later usage in a corner-detection project.
-    os.makedirs(f'{current_dir}/../labeled_chess_boards/images', exist_ok=True)
-    os.makedirs(f'{current_dir}/../labeled_chess_boards/corners', exist_ok=True)
-    id = uuid.uuid4()
-    cv2.imwrite(f'{current_dir}/../labeled_chess_boards/images/{id}.jpg',
+    if len(corners) > 1:
+        os.makedirs(f'{current_dir}/../labeled_chess_boards/images', exist_ok=True)
+        os.makedirs(f'{current_dir}/../labeled_chess_boards/corners', exist_ok=True)
+        id = uuid.uuid4()
+        cv2.imwrite(f'{current_dir}/../labeled_chess_boards/images/{id}.jpg',
                 img)
-    np.save(f'{current_dir}/../labeled_chess_boards/corners/{id}.npy', corners)
+        np.save(f'{current_dir}/../labeled_chess_boards/corners/{id}.npy', corners)
     return corners
 
 
@@ -170,13 +169,13 @@ def show_and_switch(img1, img2, corners1, corners2, rows, columns):
         cv2.destroyWindow(f'Detection 1')
         corners1 = corners1[::-1]
         img1 = np.array(img1_old)
-        return show_and_switch(img1, img2, corners1, corners2)
+        return show_and_switch(img1, img2, corners1, corners2, rows, columns)
 
     if key & 0xFF == ord("l"):  # press l to switch lines in img1
         cv2.destroyWindow(f'Detection 1')
         corners1 = switch_rows(corners1, rows)
         img1 = np.array(img1_old)
-        return show_and_switch(img1, img2, corners1, corners2)
+        return show_and_switch(img1, img2, corners1, corners2, rows, columns)
 
     cv2.destroyWindow(f'Detection 1')
     cv2.destroyWindow(f'Detection 2')
@@ -395,7 +394,7 @@ class stereoCamera():
         images = [self(image) for image in images]
         if undistort:
             # Undistorts the images
-            images = [[self.undistort_image(img1, 0), self.undistort_image(img1, 1)]
+            images = [[self.undistort_image(img1, 0), self.undistort_image(img2, 1)]
                       for img1, img2 in images]
         assert images[0][0].shape == images[0][1].shape, \
             "For both cameras must have the same resolution for stereo-calibration"
@@ -411,7 +410,7 @@ class stereoCamera():
         # Chessboard corner detection or labeling
         corners = [[corner_detection(img1), corner_detection(img2)] for img1, img2 in images]
         # Letting the users switch the corners of img1 to match them with img2
-        corners = [draw_cutout_corners(img1, img2, corners1, corners2) for [img1, img2], [corners1, corners2]
+        corners = [show_and_switch(img1, img2, corners1, corners2, rows, columns) for [img1, img2], [corners1, corners2]
                    in zip(images, corners)]
         # rescaling the corners
         corners = [[corners1/factor, corners2/factor] for corners1, corners2 in corners]

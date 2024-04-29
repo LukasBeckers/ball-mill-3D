@@ -15,6 +15,7 @@ utils/runs
 label_studio/*
 train_samples/*
 runs/*
+runs/.gitkeep
 utils/__pycache__/*
 labeled_chess_boards/*
 labeled_chess_boards/.gitkeep
