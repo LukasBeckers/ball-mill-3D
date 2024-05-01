@@ -36,6 +36,7 @@ def draw_lines(img):
             print("Current line:", line)
 
     img_old = np.array(img)
+    img = np.array(img)
     while True:
         cv2.putText(img, f'Left Click: line point, R: undo line, space: finish', (10, 30),
                     cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
@@ -145,8 +146,11 @@ def draw_cutout_corners(img, cam):
 
 def show_and_switch(img1, img2, corners1, corners2, rows, columns):
     img1_old = np.array(img1)
-    cv2.putText(img1, f's: switch order of all, l = switch lines',
-                (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 1)
+    img2_old = np.array(img2)
+    cv2.putText(img1, f's: switch order of all points',
+                (10, 30), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
+    cv2.putText(img1, f's:l = switch lines',
+                (10, 60), cv2.FONT_HERSHEY_COMPLEX, 1, (255, 255, 255), 1)
     try:
         cv2.drawChessboardCorners(img1, (rows, columns), corners1, True)
     except Exception:
@@ -168,18 +172,21 @@ def show_and_switch(img1, img2, corners1, corners2, rows, columns):
     if key & 0xFF == ord('s'):  # press s to switch ordering of img1
         cv2.destroyWindow(f'Detection 1')
         corners1 = corners1[::-1]
-        img1 = np.array(img1_old)
-        return show_and_switch(img1, img2, corners1, corners2, rows, columns)
+        return show_and_switch(np.array(img1_old), np.array(img2_old), corners1, corners2, rows, columns)
 
     if key & 0xFF == ord("l"):  # press l to switch lines in img1
         cv2.destroyWindow(f'Detection 1')
         corners1 = switch_rows(corners1, rows)
         img1 = np.array(img1_old)
-        return show_and_switch(img1, img2, corners1, corners2, rows, columns)
+        return show_and_switch(np.array(img1_old), np.array(img2_old), corners1, corners2, rows, columns)
+    
+    if key & 0xFF == 32: # press space to finish
+        cv2.destroyWindow(f'Detection 1')
+        cv2.destroyWindow(f'Detection 2')
+        return corners1, corners2
 
-    cv2.destroyWindow(f'Detection 1')
-    cv2.destroyWindow(f'Detection 2')
-    return corners1, corners2
+    # Nothing happenes if another key is pressed
+    return show_and_switch(np.array(img1_old), np.array(img2_old), corners1, corners2, rows, columns)
 
 
 class stereoCamera():
@@ -371,7 +378,9 @@ class stereoCamera():
                          scaling=0.005,
                          undistort=True,
                          stereocalibration_flags = cv2.CALIB_FIX_PRINCIPAL_POINT,
-                         corner_detection=label_corners):
+                         corner_detection=label_corners,
+                         opip1ip2=None,
+                         factor=2):
         """
         Performs stereo calibration for the stereoCamera instance
         """
@@ -395,36 +404,44 @@ class stereoCamera():
         if undistort:
             # Undistorts the images
             images = [[self.undistort_image(img1, 0), self.undistort_image(img2, 1)]
-                      for img1, img2 in images]
+                        for img1, img2 in images]
         assert images[0][0].shape == images[0][1].shape, \
-            "For both cameras must have the same resolution for stereo-calibration"
+                "For both cameras must have the same resolution for stereo-calibration"
         # heigth and width will be used in stereocalibration
         height, width = images[0][1].shape[:2]
-        # Rescales the images for better corner labeling
-        factor = 3
-        images = [[cv2.resize(img1, np.array(img1.shape[:2])[::-1] * factor),
-                   cv2.resize(img2, np.array(img2.shape[:2])[::-1] * factor)]
-                  for img1, img2 in images]
-        # Copies the scales images for later usage
-        images_old = np.array(images)
-        # Chessboard corner detection or labeling
-        corners = [[corner_detection(img1), corner_detection(img2)] for img1, img2 in images]
-        # Letting the users switch the corners of img1 to match them with img2
-        corners = [show_and_switch(img1, img2, corners1, corners2, rows, columns) for [img1, img2], [corners1, corners2]
-                   in zip(images, corners)]
-        # rescaling the corners
-        corners = [[corners1/factor, corners2/factor] for corners1, corners2 in corners]
-        for corners1, corners2 in corners:
-            objpoints.append(objp)
-            imgpoints_1.append(corners1)
-            imgpoints_2.append(corners2)
-        # prerform stereo calibration on accumulated objectpoints
-        imgpoints_1 = np.array(imgpoints_1, dtype=np.float32)
-        imgpoints_1 = np.swapaxes(imgpoints_1, axis1=1, axis2=2)
-        imgpoints_2 = np.array(imgpoints_2, dtype=np.float32)
-        imgpoints_2 = np.swapaxes(imgpoints_2, axis1=1, axis2=2)
-        objpoints = np.array(objpoints)
-        objpoints = np.expand_dims(objpoints, axis=1)
+        cv2.imshow("test_img1", images[0][0])
+        cv2.imshow("test_img2", images[0][1])
+        cv2.waitKey(0)
+        if opip1ip2 is None:
+            # Rescales the images for better corner labeling
+            images = [[cv2.resize(img1, np.array(img1.shape[:2])[::-1] * factor),
+                    cv2.resize(img2, np.array(img2.shape[:2])[::-1] * factor)]
+                    for img1, img2 in images]
+            # Copies the scales images for later usage
+            images_old = np.array(images)
+            # Chessboard corner detection or labeling
+            corners = [[corner_detection(img1), corner_detection(img2)] for img1, img2 in images]
+            # Letting the users switch the corners of img1 to match them with img2
+            corners = [show_and_switch(img1, img2, corners1, corners2, rows, columns) for [img1, img2], [corners1, corners2]
+                    in zip(images, corners)]
+            # rescaling the corners
+            corners = [[corners1/factor, corners2/factor] for corners1, corners2 in corners]
+            for corners1, corners2 in corners:
+                objpoints.append(objp)
+                imgpoints_1.append(corners1)
+                imgpoints_2.append(corners2)
+            # prerform stereo calibration on accumulated objectpoints
+            imgpoints_1 = np.array(imgpoints_1, dtype=np.float32)
+            imgpoints_1 = np.swapaxes(imgpoints_1, axis1=1, axis2=2)
+            imgpoints_2 = np.array(imgpoints_2, dtype=np.float32)
+            imgpoints_2 = np.swapaxes(imgpoints_2, axis1=1, axis2=2)
+            objpoints = np.array(objpoints)
+            objpoints = np.expand_dims(objpoints, axis=1)
+        else:
+            # shortcuts the corner detection if objectpoints and imagepoints are given by opip1ip2
+            height, width = images[0][1].shape[:2]
+            objpoints, imgpoints_1, imgpoints_2 = opip1ip2
+
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10000, 0.00001)
         ret, CM1, dist1, CM2, dist2, R, T, E, F = cv2.stereoCalibrate(objpoints,
                                                                       imgpoints_1,

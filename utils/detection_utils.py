@@ -115,9 +115,10 @@ class ballDetector():
             dists = [np.sqrt(x**2 + y **2) for x, y in diffs]
             # removing all measurements that have an exessive distance to the previous measurement
             # because they are probably errors
-            for i, dist in enumerate(dists):
+            for i, dist in reversed(list(enumerate(dists))):
                 if dist > self.max_dist:
                     self.warmup_regions.pop(i)
+
             self.ROI = self.warmup_regions[-1]
         return None
 

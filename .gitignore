@@ -20,3 +20,6 @@ utils/__pycache__/*
 labeled_chess_boards/*
 labeled_chess_boards/.gitkeep
 rapid_dev/ipynb_checkpoints
+rapid_dev/runs
+datasets/*
+datasets/.gitkeep
