@@ -1,4 +1,5 @@
 .idea
+.vscode/*
 .ipynb_checkpoints
 venv
 videos/*
@@ -15,7 +16,13 @@ utils/runs
 label_studio/*
 train_samples/*
 runs/*
+runs/.gitkeep
 utils/__pycache__/*
 labeled_chess_boards/*
 labeled_chess_boards/.gitkeep
 rapid_dev/ipynb_checkpoints
+rapid_dev/runs
+datasets/*
+datasets/.gitkeep
+config/*
+config/dataset_config/.gitkeep

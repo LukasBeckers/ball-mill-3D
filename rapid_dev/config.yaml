@@ -1,7 +1,0 @@
-path: RUN3_0/
-train: images
-val: images
-
-names:
-    0: Ball
-    1: Sticker
