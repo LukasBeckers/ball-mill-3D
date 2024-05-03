@@ -80,11 +80,12 @@ def line_intersection(lines):
     return np.array(intersections)
 
 
-def label_corners(img):
+def label_corners(img, optimize=True):
     """
     Allows the user to draw lines on an image, the line intersection will be interpreted as
     corners in a chessboard pattern.
     """
+    img = np.array(img)
     # Draws the lines (by user)
     lines, img = draw_lines(img)
     # Calculates the corners via line-intersection
@@ -94,7 +95,8 @@ def label_corners(img):
     corners = np.array([[corner] for corner in corners if h > corner[0] > 0 and w > corner[1] > 0], dtype=np.float32)
     # Refining the corner detections
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.00001)
-    corners = cv2.cornerSubPix(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), corners.reshape(-1, 1, 2), (11, 11), (-1, -1), criteria)
+    if optimize:
+        corners = cv2.cornerSubPix(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY), corners.reshape(-1, 1, 2), (11, 11), (-1, -1), criteria)
     # Saves the corners and the image for later usage in a corner-detection project.
     if len(corners) > 1:
         os.makedirs(f'{current_dir}/../labeled_chess_boards/images', exist_ok=True)
@@ -150,7 +152,7 @@ def show_and_switch(img1, img2, corners1, corners2, rows, columns):
     cv2.putText(img1, f'l = switch lines',
                 (10, 60), cv2.FONT_HERSHEY_COMPLEX, 0.5, (255, 255, 255), 1)
     cv2.putText(img1, f'd = delete detection',
-                (10, 60), cv2.FONT_HERSHEY_COMPLEX, 0.5, (255, 255, 255), 1)
+                (10, 90), cv2.FONT_HERSHEY_COMPLEX, 0.5, (255, 255, 255), 1)
     try:
         cv2.drawChessboardCorners(img1, (rows, columns), corners1, True)
     except Exception:
@@ -266,7 +268,7 @@ class stereoCamera():
                             np.array(optim_camera_matrix))
         return img
 
-    def calibrate(self, image_sets, cam, rows=8, columns=10, scaling=0.005, factor=2):
+    def calibrate(self, image_sets, cam, rows=8, columns=10, scaling=0.005, factor=2, fallback_manual=False):
         """
         Calibrates a single camera of this stereoCamera instance.
         rows and columns need to be the real number of rows and columns in the chessboard-pattern
@@ -305,14 +307,36 @@ class stereoCamera():
             # Shows one example from the image cutouts for evaluation
             img_show = np.array(images[0])
             cv2.putText(img_show,
-                        f'Image section {cam} press any key to continue.',
+                        f'Image section {cam} press space to continue.',
                         (10, 30),
                         cv2.FONT_HERSHEY_COMPLEX,
-                        0.5,
+                        0.35,
                         (255, 255, 255),
                         1)
-            cv2.imshow(f'Camera: {cam}', img_show)
-            cv2.waitKey(0)
+            cv2.putText(img_show,
+                        f'Press m to label corners manally.',
+                        (10, 60),
+                        cv2.FONT_HERSHEY_COMPLEX,
+                        0.35,
+                        (255, 255, 255),
+                        1)
+            manual = False # indicates if chessboard corners should be labeled manually.
+            while True:
+                cv2.imshow(f'Camera: {cam}', img_show)
+                key = cv2.waitKey(1)
+                if key & 0xFF == 32: # Press space to continue
+                    cv2.destroyWindow(f'Camera: {cam}')
+                    print("Continuing with automatic detection")
+                    break
+                if key & 0xFF == ord("m"): # set corners to manual labeling
+                    manual = True
+                    cv2.destroyWindow(f'Camera: {cam}') 
+                    print("Marked for manual corner labeling.")
+                    break
+            
+            # Saving copies of the images before they are changed in the detection process
+            all_images =np.ascontiguousarray(images)
+            all_images_old = np.ascontiguousarray(images_old)
             # Tries to detect the corners
             corners = [cv2.findChessboardCorners(img, (rows, columns), None) for img in images]
             # Removes the images of unsuccessful corner-predictions. res[1] = corner-coordinates, res[0] = ret
@@ -320,42 +344,70 @@ class stereoCamera():
             images_old = [images_old[i] for i, res in enumerate(corners) if res[0]]
             # Removes unsuccessful detections. res[1] = corner-coordinates, res[0] = ret
             corners = [res[1] for res in corners if res[0]]
-            # skips following steps if now corners were detected
-            if len(corners) == 0:
-                continue
-
-            # Parameter for chessboard detection refinement
-            criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-            # Refines the corner predictions
-            corners = [cv2.cornerSubPix(img, crnrs, (11, 11), (-1, -1), criteria)
-                       for img, crnrs in zip(images, corners)]
+            # skips following steps if now corners were detected, or fall back to manual labeling
+            if len(corners) == 0 or manual:
+                images = all_images
+                images_old = all_images_old
+                if fallback_manual or manual:
+                    print("Manual Labeling!")
+                    corners = [label_corners(images[0], optimize=False)]
+                else:
+                    print('No Corners Detected!')
+                    continue
+            else:
+                # Parameter for chessboard detection refinement
+                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+                # Refines the corner predictions
+                corners = [cv2.cornerSubPix(img, crnrs, (11, 11), (-1, -1), criteria)
+                        for img, crnrs in zip(images, corners)]
+            print("corners shape", np.array(corners).shape)
             # Adjusts the corner-coordinates for the scaling and the cutout-offset.
             corners = [np.array([(np.array(coord) + offset) / factor for (coord) in crnrs], dtype=np.float32)
-                       for crnrs in corners]
+                    for crnrs in corners]
             # Shows one example of the drawn chessboard corners
             cv2.drawChessboardCorners(images_old[0],
-                                      (rows, columns),
-                                      corners[0] * factor,
-                                      True)
+                                    (rows, columns),
+                                    corners[0] * factor,
+                                    True)
             for i, [corner] in enumerate(corners[0]):
                 cv2.putText(images_old[0],
                             f'{i}',
                             (int(corner[0] * factor),
-                             int(corner[1]) * factor),
+                            int(corner[1]) * factor),
                             cv2.FONT_HERSHEY_COMPLEX,
                             0.5,
                             (255, 255, 255),
                             1)
+            cv2.putText(images_old[0],"Space to continue, d to delete", 
+                (10, 30), cv2.FONT_HERSHEY_COMPLEX, 0.5, (255, 255, 255),  1)
 
-            cv2.imshow(f'Camera: {cam}', images_old[0])
-            key = cv2.waitKey(0)
-            cv2.destroyWindow(f'Camera: {cam}')
+            while True:
+                cv2.imshow(f'Camera: {cam}', images_old[0])
+                key = cv2.waitKey(0)
+                delete = False
+                if key & 0xFF == ord("d"): # Deleting this detection           
+                    cv2.destroyWindow(f'Camera: {cam}')
+                    delete = True
+                    print("Marked detection for deletion!")
+                    break
+
+                if key & 0xFF == 32: # press space to finish
+                    cv2.destroyWindow(f'Camera: {cam}')
+                    delete = False
+                    print("Accepting detections!")
+                    break
+            if delete:
+                print("Deleting!")
+                continue
+
             objpoints.extend([objp for _ in corners])
             imgpoints.extend(corners)
+            print("Image Points", np.array(imgpoints).shape)
 
         if imgpoints == []:
             print("No Corners were detected, failed calibration")
             return
+        
         # Performs the calibration
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(np.array(objpoints),
                                                            np.array(imgpoints),
@@ -385,7 +437,8 @@ class stereoCamera():
                          stereocalibration_flags = cv2.CALIB_FIX_PRINCIPAL_POINT,
                          corner_detection=label_corners,
                          opip1ip2=None,
-                         factor=2):
+                         factor=2,
+                         optimize=False):
         """
         Performs stereo calibration for the stereoCamera instance
         """
@@ -414,13 +467,13 @@ class stereoCamera():
                 "For both cameras must have the same resolution for stereo-calibration"
         # heigth and width will be used in stereocalibration
         height, width = images[0][1].shape[:2]
-        if opip1ip2 is None:
+        if opip1ip2 is None: # opip1ip2 stands for objpoints, imagepoints1 and imagepoints2 if they are passed, it basically shortcuts the detection of these values.
             # Rescales the images for better corner labeling
             images = [[cv2.resize(img1, np.array(img1.shape[:2])[::-1] * factor),
                     cv2.resize(img2, np.array(img2.shape[:2])[::-1] * factor)]
                     for img1, img2 in images]
             # Chessboard corner detection or labeling
-            corners = [[corner_detection(img1), corner_detection(img2)] for img1, img2 in images]
+            corners = [[corner_detection(img1, optimize=optimize), corner_detection(img2)] for img1, img2 in images]
             # Letting the users switch the corners of img1 to match them with img2
             corners = [show_and_switch(img1, img2, corners1, corners2, rows, columns) for [img1, img2], [corners1, corners2]
                     in zip(images, corners)]
@@ -445,13 +498,13 @@ class stereoCamera():
             height, width = images[0][1].shape[:2]
             objpoints, imgpoints_1, imgpoints_2 = opip1ip2
 
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 10000, 0.00001)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.0001)
         ret, CM1, dist1, CM2, dist2, R, T, E, F = cv2.stereoCalibrate(objpoints,
                                                                       imgpoints_1,
                                                                       imgpoints_2,
-                                                                      np.array(self.conf["camera_matrix"][0]),
+                                                                      np.array(self.conf["optimized_camera_matrix"][0])  if undistort else np.array(self.conf["camera_matrix"][0]),
                                                                       np.array(self.conf["distortion"][0]),
-                                                                      np.array(self.conf["camera_matrix"][1]),
+                                                                      np.array(self.conf["camera_matrix"][1]) if undistort else np.array(self.conf["camera_matrix"][1]),
                                                                       np.array(self.conf["distortion"][1]),
                                                                       (width, height),
                                                                       criteria=criteria,
@@ -553,7 +606,7 @@ class stereoCamera():
         # frame0 should be mirror frame, please use this convention
         frame0 = np.fliplr(frame0)
 
-        return frame0, frame1
+        return np.ascontiguousarray(frame0), np.ascontiguousarray(frame1) 
 
 if __name__ == "__main__":
     pass
