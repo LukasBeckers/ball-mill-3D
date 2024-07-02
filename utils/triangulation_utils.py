@@ -70,18 +70,3 @@ def transform_point(point, transform_matrix):
     return new_point[0]
 
 
-def draw_detections(img, detection_results, stickercoords=None):
-    detection_results = detection_results[0]  
-    boxes = detection_results.boxes.xyxy.tolist()
-    classes = detection_results.boxes.cls
-    for cl, box in zip(classes, boxes):
-        if  cl == 0:  # 0 = Ball, 1 = Red Sticker
-            img = cv2.rectangle(img, np.array(box[:2], dtype=int), np.array(box[2:], dtype=int), [200, 200, 200], 4)
-        if cl == 1:
-            img = cv2.rectangle(img, np.array(box[:2], dtype=int), np.array(box[2:], dtype=int), [0, 0, 200], 4)
-
-    if stickercoords is not None:
-        for n, coord in stickercoords.items():
-            print("Key", n, "Coord", coord)
-            cv2.putText(img, str(n), np.array(coord, dtype=int), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 255, 0), 1)
-    return img
