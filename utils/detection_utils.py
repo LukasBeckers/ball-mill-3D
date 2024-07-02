@@ -17,7 +17,7 @@ class stickerDetector():
         self.first_frame = True
         self.n_stickers = n_stickers
 
-    def __call__(self, detection_results):
+    def __call__(self, detection_results, mirror=False):
         """
         detection_results = YOLOV8 results from detector trained
 
@@ -42,6 +42,8 @@ class stickerDetector():
         if self.first_frame:
             if len(coords) == self.n_stickers:
                 idxs = np.argsort([c[0] for c in coords])
+                if mirror:
+                    idxs = idxs[::-1]
                 self.ROIS = {j: coords[i] for j, i in enumerate(idxs)}
                 self.first_frame = False
                 return None
