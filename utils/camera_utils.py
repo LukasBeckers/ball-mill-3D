@@ -462,7 +462,7 @@ class stereoCamera():
         objpoints = [] # Defined coordinates in real space
 
         objpoint_one_image = generate_objectpoints(rows_inner=rows_inner,
-                                     columns=columns_inner,
+                                     columns_inner=columns_inner,
                                      edge_length=edge_length)
         for image_set in image_sets:
             image_set = [self(img)[cam] for img in image_set]
