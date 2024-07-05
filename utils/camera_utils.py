@@ -559,7 +559,13 @@ class stereoCamera():
                 continue
 
             else:
-                corners_0, corners_1 = show_and_switch(img0=image_set_0[0], img1=image_set_1[0], corners0=corners_0[0], corners1=corners_1[0], rows_inner=rows_inner, columns_inner=columns_inner, image_scaling=image_scaling)
+                corners_0, corners_1 = show_and_switch(img0=image_set_0[0],
+                                                       img1=image_set_1[0], 
+                                                       corners0=corners_0[0], 
+                                                       corners1=corners_1[0], 
+                                                       rows_inner=rows_inner, 
+                                                       columns_inner=columns_inner, 
+                                                       image_scaling=image_scaling)
                 imgpoints_0.extend([corners_0])
                 imgpoints_1.extend([corners_1])
                 objpoints.extend([objpoint_one_image]) # In show and switch each corner_set is reduced to only the first image_corners. This can be changed in the future to increase precision
