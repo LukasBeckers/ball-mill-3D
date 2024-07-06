@@ -1,5 +1,7 @@
 from utils.camera_utils import corner_detection, stereoCamera, show_and_switch
 from utils.triangulation_utils import triangulate
+import numpy as np 
+import plotly.graph_objects as go 
 
 
 class Validator(stereoCamera):
@@ -11,14 +13,16 @@ class Validator(stereoCamera):
         self.corners0 = []
         self.corners1 = []
         self.points = []
+        self.rows_cols = []
 
-    def add_calibration_frame(self, frame):
+    def add_calibration_frame(self, frame, rows, columns):
         "For reliable validation results only add frames from calibration videos NOT used in the stereo-calibration!"
 
         frame0, frame1 = self(frame)
 
         self.frames0.append(frame0)
         self.frames1.append(frame1)
+        self.rows_cols.append([rows, columns])
         
     def _detect_corners(self, rows, columns, image_scaling=2):
         for frame0, frame1 in zip(self.frames0, self.frames1):
@@ -54,21 +58,199 @@ class Validator(stereoCamera):
 
             self.points.append(frame_points)
 
-    def _calculate_distances(self):
-        pass
+   def _calculate_distances(self, rows, columns):
+    rows_inner = rows - 1 
+    columns_inner = columns - 1 
 
-        """# Calculate distances between consecutive 3D points for the smaller subset
-distances_smaller_subset = [np.linalg.norm(points_smaller_subset[i+1] - points_smaller_subset[i]) for i in range(len(points_smaller_subset) - 1)]
-np.array([x for x in distances_smaller_subset if x < 0.01]).mean(), "Distance start - end (diagonaly) =", np.linalg.norm(coordinates[5]- coordinates[-6]), coordinates[0], coordinates[-1]"""
+    self.column_distances = []
+    self.row_distances = []
+    self.width_distances = []
+    self.height_distances = []
+    self.diagonal_distances = []
+
+    # Calculate the "column" distances
+    for frame_points in self.points:
+        if frame_points is None:
+            self.column_distances.append([])
+            self.row_distances.append([])
+            self.width_distances.append([])
+            self.height_distances.append([])
+            self.diagonal_distances.append([])
+            continue
+        
+        col_dist = []
+        for lower_index in range(0, len(frame_points), rows_inner):
+            upper_index = lower_index + rows_inner
+            col_points = frame_points[lower_index: upper_index]
+            for point0, point1 in zip(col_points[:-1], col_points[1:]):
+                col_dist.append(np.linalg.norm(point1 - point0))
+        self.column_distances.append(col_dist)
+        
+        # Calculate the "row" distances
+        row_dist = []
+        for start_row in range(rows_inner):
+            row_points = frame_points[start_row::rows_inner]
+            for point0, point1 in zip(row_points[:-1], row_points[1:]):
+                row_dist.append(np.linalg.norm(point1 - point0))
+        self.row_distances.append(row_dist)
+
+        # Calculate "width" distances
+        width_dist = []
+        for start_row in range(rows_inner):
+            width_dist.append(np.linalg.norm(frame_points[start_row] - frame_points[start_row + (rows_inner * columns_inner)]))
+        self.width_distances.append(width_dist)
+        
+        # Calculate "height" distances
+        height_dist = []
+        for lower_index in range(0, len(frame_points), rows_inner):
+            upper_index = lower_index + rows_inner
+            col_points = frame_points[lower_index: upper_index]
+            height_dist.append(np.linalg.norm(col_points[-1] - col_points[0]))
+        self.height_distances.append(height_dist)
+
+        # Calculate diagonal distances
+        diag_dist = []
+        diag_dist.append(np.linalg.norm(frame_points[-1] - frame_points[0]))
+        diag_dist.append(np.linalg.norm(frame_points[rows_inner - 1] - frame_points[-rows_inner]))
+        self.diagonal_distances.append(diag_dist)
+
+    def _visualize(self):
+        
+        fig = go.Figure()
+       
+        for frame_points in self.points:
+            if frame_points is None:
+                continue
+
+            coords = np.array(frame_points)  
+
+            # Create line connections between sequential points
+            connections = [[a, b] for a, b in zip(range(len(coords)-1), range(1, len(coords)))]
+
+            # Calculate max range to set equal axes
+            x_range = [coords[:, 0].min(), coords[:, 0].max()]
+            y_range = [coords[:, 1].min(), coords[:, 1].max()]
+            z_range = [coords[:, 2].min(), coords[:, 2].max()]
+
+            # Find the maximum range
+            max_range = max(x_range[1] - x_range[0], y_range[1] - y_range[0], z_range[1] - z_range[0])
+
+            # Calculate the mid points for each axis
+            x_mid = sum(x_range) / 2
+            y_mid = sum(y_range) / 2
+            z_mid = sum(z_range) / 2
+
+            # Set the range for each axis to be the max range centered around the mid point
+            x_range = [x_mid - max_range / 2, x_mid + max_range / 2]
+            y_range = [y_mid - max_range / 2, y_mid + max_range / 2]
+            z_range = [z_mid - max_range / 2, z_mid + max_range / 2]
 
 
+            # Add lines between connected points
+            for conn in connections:
+                fig.add_trace(go.Scatter3d(
+                    x=[coords[conn[0], 0], coords[conn[1], 0]],
+                    y=[coords[conn[0], 1], coords[conn[1], 1]],
+                    z=[coords[conn[0], 2], coords[conn[1], 2]],
+                    mode='lines',
+                    line=dict(color='blue', width=2),
+                    name='Line'
+                ))
+
+            # Add markers for each point
+            fig.add_trace(go.Scatter3d(
+            x=coords[:, 0],
+            y=coords[:, 1],
+            z=coords[:, 2],
+            mode='markers',
+            marker=dict(size=1, color='red'),
+            name='Points'
+            ))
+
+            # Update plot appearance
+            fig.update_layout(
+            title="3D Line Plot",
+            scene=dict(
+                xaxis_title='X Coordinate',
+                yaxis_title='Y Coordinate',
+                zaxis_title='Z Coordinate',
+                xaxis=dict(range=x_range, autorange=False),
+                yaxis=dict(range=y_range, autorange=False),
+                zaxis=dict(range=z_range, autorange=False),
+                aspectmode='manual',
+                aspectratio=dict(x=1, y=1, z=1)
+            )
+            )
+
+            # Show the plot
+        fig.show()
             
+    def validate(self, new_frames=None):
+        """
+        Validate the calibration by detecting corners, triangulating points, and calculating distances.
+        
+        Args:
+            new_frames (list, optional): List of new frames to be added for validation.
+                                         Each frame should be a tuple containing (frame, rows, columns).
+        """
+        # Optionally add new frames
+        if new_frames:
+            for frame, rows, columns in new_frames:
+                self.add_calibration_frame(frame, rows, columns)
+        
+        # Detect corners
+        for rows, columns in self.rows_cols:
+            self._detect_corners(rows, columns)
+        
+        # Triangulate points
+        self._triangulate()
+        
+        # Calculate distances
+        for rows, columns in self.rows_cols:
+            self._calculate_distances(rows, columns)
+        
+        # Compute average lengths and standard deviation for each frame
+        for i, (rows, columns) in enumerate(self.rows_cols):
+            frame_points = self.points[i]
+            if frame_points is None:
+                print(f"Frame {i}: No valid points detected.")
+                continue
             
-
-
-
-
+            column_distances = self.column_distances[i]
+            row_distances = self.row_distances[i]
+            width_distances = self.width_distances[i]
+            height_distances = self.height_distances[i]
+            diagonal_distances = self.diagonal_distances[i]
+            
+            avg_col = np.mean(column_distances)
+            std_col = np.std(column_distances)
+            
+            avg_row = np.mean(row_distances)
+            std_row = np.std(row_distances)
+            
+            avg_width = np.mean(width_distances)
+            std_width = np.std(width_distances)
+            
+            avg_height = np.mean(height_distances)
+            std_height = np.std(height_distances)
+            
+            avg_diag = np.mean(diagonal_distances)
+            std_diag = np.std(diagonal_distances)
+            
+            print(f"Frame {i}:")
+            print(f"  Average Column Distance: {avg_col:.2f} (std: {std_col:.2f})")
+            print(f"  Average Row Distance: {avg_row:.2f} (std: {std_row:.2f})")
+            print(f"  Average Width Distance: {avg_width:.2f} (std: {std_width:.2f})")
+            print(f"  Average Height Distance: {avg_height:.2f} (std: {std_height:.2f})")
+            print(f"  Average Diagonal Distance: {avg_diag:.2f} (std: {std_diag:.2f})\n")
+        
+        # Visualize results
+        self._visualize()
 
     
     
+
+
+
+
 
