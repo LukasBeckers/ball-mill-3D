@@ -24,25 +24,28 @@ class Validator(stereoCamera):
         self.frames1.append(frame1)
         self.rows_cols.append([rows, columns])
         
-    def _detect_corners(self, rows, columns, image_scaling=2):
-        for frame0, frame1 in zip(self.frames0, self.frames1):
-
-            corners0 = corner_detection(image_set=[frame0], image_scaling=image_scaling, cam=0, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
-            corners1 = corner_detection(image_set=[frame1], image_scaling=image_scaling, cam=1, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
-            if corners0 is None or corners1 is None:
-                self.corners0.append(None)
-                self.corners1.append(None)
-                continue
-            else:
-                corners0, corners1 = show_and_switch(img0=frame0,
-                                                       img1=frame1, 
-                                                       corners0=corners0[0],
-                                                       corners1=corners1[0], 
-                                                       rows_inner=rows - 1, 
-                                                       columns_inner=columns - 1, 
-                                                       image_scaling=image_scaling)
-                self.corners0.append(corners0)
-                self.corners1.append(corners1)
+    def _detect_corners(self, frame0, frame1, rows, columns, image_scaling=2):
+        corners0 = corner_detection(image_set=[frame0], image_scaling=image_scaling, cam=0, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
+        if corners0 is None:
+            self.corners0.append(None)
+            self.corners1.append(None)
+            return
+        corners1 = corner_detection(image_set=[frame1], image_scaling=image_scaling, cam=1, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
+        if corners1 is None:
+            self.corners0.append(None)
+            self.corners1.append(None)
+            return
+        else:
+            corners0, corners1 = show_and_switch(img0=frame0,
+                                                   img1=frame1, 
+                                                   corners0=corners0[0],
+                                                   corners1=corners1[0], 
+                                                   rows_inner=rows - 1, 
+                                                   columns_inner=columns - 1, 
+                                                   image_scaling=image_scaling)
+            self.corners0.append(corners0)
+            self.corners1.append(corners1)
+            return
 
 
     def _triangulate(self):
@@ -58,61 +61,61 @@ class Validator(stereoCamera):
 
             self.points.append(frame_points)
 
-   def _calculate_distances(self, rows, columns):
-    rows_inner = rows - 1 
-    columns_inner = columns - 1 
+    def _calculate_distances(self, rows, columns):
+        rows_inner = rows - 1 
+        columns_inner = columns - 1 
 
-    self.column_distances = []
-    self.row_distances = []
-    self.width_distances = []
-    self.height_distances = []
-    self.diagonal_distances = []
+        self.column_distances = []
+        self.row_distances = []
+        self.width_distances = []
+        self.height_distances = []
+        self.diagonal_distances = []
 
-    # Calculate the "column" distances
-    for frame_points in self.points:
-        if frame_points is None:
-            self.column_distances.append([])
-            self.row_distances.append([])
-            self.width_distances.append([])
-            self.height_distances.append([])
-            self.diagonal_distances.append([])
-            continue
-        
-        col_dist = []
-        for lower_index in range(0, len(frame_points), rows_inner):
-            upper_index = lower_index + rows_inner
-            col_points = frame_points[lower_index: upper_index]
-            for point0, point1 in zip(col_points[:-1], col_points[1:]):
-                col_dist.append(np.linalg.norm(point1 - point0))
-        self.column_distances.append(col_dist)
-        
-        # Calculate the "row" distances
-        row_dist = []
-        for start_row in range(rows_inner):
-            row_points = frame_points[start_row::rows_inner]
-            for point0, point1 in zip(row_points[:-1], row_points[1:]):
-                row_dist.append(np.linalg.norm(point1 - point0))
-        self.row_distances.append(row_dist)
+        # Calculate the "column" distances
+        for frame_points in self.points:
+            if frame_points is None:
+                self.column_distances.append([])
+                self.row_distances.append([])
+                self.width_distances.append([])
+                self.height_distances.append([])
+                self.diagonal_distances.append([])
+                continue
+            
+            col_dist = []
+            for lower_index in range(0, len(frame_points), rows_inner):
+                upper_index = lower_index + rows_inner
+                col_points = frame_points[lower_index: upper_index]
+                for point0, point1 in zip(col_points[:-1], col_points[1:]):
+                    col_dist.append(np.linalg.norm(point1 - point0))
+            self.column_distances.append(col_dist)
+            
+            # Calculate the "row" distances
+            row_dist = []
+            for start_row in range(rows_inner):
+                row_points = frame_points[start_row::rows_inner]
+                for point0, point1 in zip(row_points[:-1], row_points[1:]):
+                    row_dist.append(np.linalg.norm(point1 - point0))
+            self.row_distances.append(row_dist)
 
-        # Calculate "width" distances
-        width_dist = []
-        for start_row in range(rows_inner):
-            width_dist.append(np.linalg.norm(frame_points[start_row] - frame_points[start_row + (rows_inner * columns_inner)]))
-        self.width_distances.append(width_dist)
-        
-        # Calculate "height" distances
-        height_dist = []
-        for lower_index in range(0, len(frame_points), rows_inner):
-            upper_index = lower_index + rows_inner
-            col_points = frame_points[lower_index: upper_index]
-            height_dist.append(np.linalg.norm(col_points[-1] - col_points[0]))
-        self.height_distances.append(height_dist)
+            # Calculate "width" distances
+            width_dist = []
+            for start_row in range(rows_inner):
+                width_dist.append(np.linalg.norm(frame_points[start_row] - frame_points[start_row + (rows_inner * (columns_inner-1))]))
+            self.width_distances.append(width_dist)
+            
+            # Calculate "height" distances
+            height_dist = []
+            for lower_index in range(0, len(frame_points), rows_inner):
+                upper_index = lower_index + rows_inner
+                col_points = frame_points[lower_index: upper_index]
+                height_dist.append(np.linalg.norm(col_points[-1] - col_points[0]))
+            self.height_distances.append(height_dist)
 
-        # Calculate diagonal distances
-        diag_dist = []
-        diag_dist.append(np.linalg.norm(frame_points[-1] - frame_points[0]))
-        diag_dist.append(np.linalg.norm(frame_points[rows_inner - 1] - frame_points[-rows_inner]))
-        self.diagonal_distances.append(diag_dist)
+            # Calculate diagonal distances
+            diag_dist = []
+            diag_dist.append(np.linalg.norm(frame_points[-1] - frame_points[0]))
+            diag_dist.append(np.linalg.norm(frame_points[rows_inner - 1] - frame_points[-rows_inner]))
+            self.diagonal_distances.append(diag_dist)
 
     def _visualize(self):
         
@@ -185,7 +188,7 @@ class Validator(stereoCamera):
             # Show the plot
         fig.show()
             
-    def validate(self, new_frames=None):
+    def validate(self, image_scaling=2, new_frames=None):
         """
         Validate the calibration by detecting corners, triangulating points, and calculating distances.
         
@@ -199,8 +202,8 @@ class Validator(stereoCamera):
                 self.add_calibration_frame(frame, rows, columns)
         
         # Detect corners
-        for rows, columns in self.rows_cols:
-            self._detect_corners(rows, columns)
+        for frame0, frame1, (rows, columns) in zip(self.frames0, self.frames1, self.rows_cols):
+            self._detect_corners(frame0, frame1, rows, columns, image_scaling=image_scaling)
         
         # Triangulate points
         self._triangulate()
@@ -238,11 +241,11 @@ class Validator(stereoCamera):
             std_diag = np.std(diagonal_distances)
             
             print(f"Frame {i}:")
-            print(f"  Average Column Distance: {avg_col:.2f} (std: {std_col:.2f})")
-            print(f"  Average Row Distance: {avg_row:.2f} (std: {std_row:.2f})")
-            print(f"  Average Width Distance: {avg_width:.2f} (std: {std_width:.2f})")
-            print(f"  Average Height Distance: {avg_height:.2f} (std: {std_height:.2f})")
-            print(f"  Average Diagonal Distance: {avg_diag:.2f} (std: {std_diag:.2f})\n")
+            print(f"  Average Column Distance: {avg_col*100:.4f} cm (std: {std_col*100:.4f})")
+            print(f"  Average Row Distance: {avg_row*100:.4f} cm (std: {std_row*100:.4f})")
+            print(f"  Average Width Distance: {avg_width*100:.4f} cm (std: {std_width*100:.4f})")
+            print(f"  Average Height Distance: {avg_height*100:.4f} cm (std: {std_height*100:.4f})")
+            print(f"  Average Diagonal Distance: {avg_diag*100:.4f} cm (std: {std_diag*100:.4f})\n")
         
         # Visualize results
         self._visualize()

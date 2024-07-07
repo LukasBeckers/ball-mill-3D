@@ -548,6 +548,9 @@ class stereoCamera():
                                          columns_inner=columns_inner,
                                          fallback_manual=fallback_manual)
                                         
+            if corners_0 is None:
+                continue
+            
             corners_1 = corner_detection(image_set=image_set_1,
                                          image_scaling=image_scaling,
                                          cam=1, 
@@ -555,7 +558,7 @@ class stereoCamera():
                                          columns_inner=columns_inner,
                                          fallback_manual=fallback_manual)
 
-            if corners_0 is None or corners_1 is None:
+            if corners_1 is None:
                 continue
 
             else:
