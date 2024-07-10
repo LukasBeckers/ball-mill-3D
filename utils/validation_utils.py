@@ -15,6 +15,15 @@ class Validator(stereoCamera):
         self.points = []
         self.rows_cols = []
 
+    def _reset(self, full=False):
+        if full:
+            self.frames0 = []
+            self.frames1 = []
+            self.rows_cols = []
+        self.corners0 = []
+        self.corners1 = []
+        self.points = []
+
     def add_calibration_frame(self, frame, rows, columns):
         "For reliable validation results only add frames from calibration videos NOT used in the stereo-calibration!"
 
@@ -118,7 +127,6 @@ class Validator(stereoCamera):
             self.diagonal_distances.append(diag_dist)
 
     def _visualize(self):
-        
         fig = go.Figure()
        
         for frame_points in self.points:
@@ -127,29 +135,22 @@ class Validator(stereoCamera):
 
             coords = np.array(frame_points)  
 
-            # Create line connections between sequential points
             connections = [[a, b] for a, b in zip(range(len(coords)-1), range(1, len(coords)))]
 
-            # Calculate max range to set equal axes
             x_range = [coords[:, 0].min(), coords[:, 0].max()]
             y_range = [coords[:, 1].min(), coords[:, 1].max()]
             z_range = [coords[:, 2].min(), coords[:, 2].max()]
 
-            # Find the maximum range
             max_range = max(x_range[1] - x_range[0], y_range[1] - y_range[0], z_range[1] - z_range[0])
 
-            # Calculate the mid points for each axis
             x_mid = sum(x_range) / 2
             y_mid = sum(y_range) / 2
             z_mid = sum(z_range) / 2
 
-            # Set the range for each axis to be the max range centered around the mid point
             x_range = [x_mid - max_range / 2, x_mid + max_range / 2]
             y_range = [y_mid - max_range / 2, y_mid + max_range / 2]
             z_range = [z_mid - max_range / 2, z_mid + max_range / 2]
 
-
-            # Add lines between connected points
             for conn in connections:
                 fig.add_trace(go.Scatter3d(
                     x=[coords[conn[0], 0], coords[conn[1], 0]],
@@ -160,7 +161,6 @@ class Validator(stereoCamera):
                     name='Line'
                 ))
 
-            # Add markers for each point
             fig.add_trace(go.Scatter3d(
             x=coords[:, 0],
             y=coords[:, 1],
@@ -170,7 +170,6 @@ class Validator(stereoCamera):
             name='Points'
             ))
 
-            # Update plot appearance
             fig.update_layout(
             title="3D Line Plot",
             scene=dict(
@@ -185,7 +184,6 @@ class Validator(stereoCamera):
             )
             )
 
-            # Show the plot
         fig.show()
             
     def validate(self, image_scaling=2, new_frames=None):
@@ -196,6 +194,7 @@ class Validator(stereoCamera):
             new_frames (list, optional): List of new frames to be added for validation.
                                          Each frame should be a tuple containing (frame, rows, columns).
         """
+
         # Optionally add new frames
         if new_frames:
             for frame, rows, columns in new_frames:
