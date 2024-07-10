@@ -199,15 +199,14 @@ class Validator(stereoCamera):
         if new_frames:
             for frame, rows, columns in new_frames:
                 self.add_calibration_frame(frame, rows, columns)
+
+        n_points = len(self.points) 
+        if n_points < len(self.rows_cols): # Checking if some frames are not labeled yet.
+            for frame0, frame1, (rows, columns) in zip(self.frames0[n_points:], self.frames1[n_points:], self.rows_cols[n_points:]):
+                self._detect_corners(frame0, frame1, rows, columns, image_scaling=image_scaling)
         
-        # Detect corners
-        for frame0, frame1, (rows, columns) in zip(self.frames0, self.frames1, self.rows_cols):
-            self._detect_corners(frame0, frame1, rows, columns, image_scaling=image_scaling)
-        
-        # Triangulate points
         self._triangulate()
         
-        # Calculate distances
         for rows, columns in self.rows_cols:
             self._calculate_distances(rows, columns)
         
