@@ -204,29 +204,31 @@ def show_and_switch(img0, img1, corners0, corners1, rows_inner, columns_inner, i
     for i, [corner] in enumerate(corners1):
         cv2.putText(img1, f'{i}', (int(corner[0]), int(corner[1])), cv2.FONT_HERSHEY_COMPLEX, 0.5,
                     (0, 255, 0), 1)
-    cv2.imshow(f'Detection 1', img0)
-    cv2.imshow(f'Detection 2', img1)
+    img0_name = 'Show and Switch Detection 1'
+    img1_name = 'Show and Switch Detection 2'
+    cv2.imshow(img0_name, img0)
+    cv2.imshow(img1_name, img1)
     key = cv2.waitKey(0)
 
     if key & 0xFF == ord('s'):  # press s to switch ordering of img0
-        cv2.destroyWindow(f'Detection 1')
+        cv2.destroyWindow(img0_name)
         corners0 = corners0[::-1]
         return show_and_switch(np.array(img0_old), np.array(img1_old), corners0 / image_scaling, corners1 / image_scaling, rows_inner, columns_inner, image_scaling)
 
     if key & 0xFF == ord("l"):  # press l to switch lines in img0
-        cv2.destroyWindow(f'Detection 1')
+        cv2.destroyWindow(img0_name)
         corners0 = switch_rows(corners0, rows_inner)
         img0 = np.array(img0_old)
         return show_and_switch(np.array(img0_old), np.array(img1_old), corners0 / image_scaling, corners1 / image_scaling, rows_inner, columns_inner, image_scaling)
     
     if key & 0xFF == ord("d"): # Deleting this detection
-        cv2.destroyWindow(f'Detection 1')
-        cv2.destroyWindow(f'Detection 2')
+        cv2.destroyWindow(img0_name)
+        cv2.destroyWindow(img1_name)
         return None
     
     if key & 0xFF == 32: # press space to finish
-        cv2.destroyWindow(f'Detection 1')
-        cv2.destroyWindow(f'Detection 2')
+        cv2.destroyWindow(img0_name)
+        cv2.destroyWindow(img1_name)
         return corners0 / image_scaling, corners1 / image_scaling
 
     # Nothing happenes if another key is pressed
