@@ -4,6 +4,23 @@ from ultralytics import YOLO
 
 from utils.camera_utils import *
 
+class Detector():
+    """
+    Incorporates the YOLO-model as well as the stickerDetector and the ballDetector
+    """
+
+    def __init__(self, model_name, n_stickers, max_dist_sticker=10, max_dist_ball=40, warmup_steps_ball=10):
+        self.yolo_model = YOLO(f"../weights/model_name/best.pt")
+        self.ballDetector = ballDetector(max_dist=max_dist_ball, warmup_steps=warmup_steps_ball)
+        self.stickerDetector = stickerDetector(n_stickers=n_stickers, max_dist=max_dist_sticker)
+
+    def __call__(self, image, return_yolo_output=False):
+        detection_results = self.yolo_model(image)
+        sticker_results = self.stickerDetector(detection_results)
+        ball_results = self.ballDetector(detection_results)
+
+        return (ball_results, sticker_results, detection_results) if return_yolo_output else (ball_results, sticker_results)
+
 
 class stickerDetector():
     """
