@@ -1,8 +1,25 @@
 import cv2
 import os
 from ultralytics import YOLO
-
 from utils.camera_utils import *
+
+
+def draw_detections(img, detection_results, stickercoords=None):
+    detection_results = detection_results[0]  
+    boxes = detection_results.boxes.xyxy.tolist()
+    classes = detection_results.boxes.cls
+    for cl, box in zip(classes, boxes):
+        if  cl == 0:  # 0 = Ball, 1 = Red Sticker
+            img = cv2.rectangle(img, np.array(box[:2], dtype=int), np.array(box[2:], dtype=int), [200, 200, 200], 4)
+        if cl == 1:
+            img = cv2.rectangle(img, np.array(box[:2], dtype=int), np.array(box[2:], dtype=int), [0, 0, 200], 4)
+
+    if stickercoords is not None:
+        for n, coord in stickercoords.items():
+            print("Key", n, "Coord", coord)
+            cv2.putText(img, str(n), np.array(coord, dtype=int), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 255, 0), 1)
+    return img
+
 
 class Detector():
     """
@@ -36,9 +53,8 @@ class stickerDetector():
 
     def __call__(self, detection_results, mirror=False):
         """
-        detection_results = YOLOV8 results from detector trained
+        detection_results = YOLOV8 results 
 
-        to detect the red stickers.
         In contrast to the ballDetector, the stickerDetector uses no warmup-steps, because sticker detection tends to be very solid.
         Make sure that all stickers and only the stickers are detected in the first frame.
         """
@@ -58,7 +74,7 @@ class stickerDetector():
 
         if self.first_frame:
             if len(coords) == self.n_stickers:
-                idxs = np.argsort([c[0] for c in coords])
+                idxs = np.argsort([c[0] for c in coords]) # Numerating Coords from 
                 if mirror:
                     idxs = idxs[::-1]
                 self.ROIS = {j: coords[i] for j, i in enumerate(idxs)}
@@ -70,31 +86,38 @@ class stickerDetector():
                 return None
         else:
             results = {}
+            taken_coord_id = []
             # choosing the coord for each roi, that is closest and checking if dist is over max dist
             for i, roi in self.ROIS.items():
-                min_dist = 10E20
-                candiate = None
-                taken_coords = []
+                min_dist = 10E20 
+                candidate = None
+                candidate_id = None
                 for j, coord in enumerate(coords):
-                    dist = np.sqrt((coord[0] - roi[0]) ** 2 + (coord[1] - roi[1]) ** 2)
+                    dist = np.linalg.norm(roi - coord) 
                     if dist < min_dist:
-                        if not j in taken_coords:  # Prevent double assignments
+                        if not j in taken_coord_id:  # Prevent double assignments
+                            print("J", j)
+                            print("Taken Coords", taken_coord_id)
                             min_dist = dist
                             candidate = coord
+                            candidate_id = j
+
 
                 if min_dist > self.max_dist:
                     print("Over max dist in sticker detection!")
                     return None
                 else:
                     results[i] = candidate
-                    taken_coords.append(j)
+                    taken_coord_id.append(candidate_id)
+
 
         if len(results) == self.n_stickers:
             self.ROIS.update(results)
             return results
 
-        print("Not enough stickers detected!")
-        return None
+        else:
+            print("Not enough stickers detected!")
+            return None
 
 
 class ballDetector():
