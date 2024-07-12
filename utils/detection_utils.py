@@ -5,7 +5,7 @@ from utils.camera_utils import *
 
 
 def draw_detections(img, detection_results, stickercoords=None):
-    detection_results = detection_results[0]  
+    detection_results = detection_results[0]
     boxes = detection_results.boxes.xyxy.tolist()
     classes = detection_results.boxes.cls
     for cl, box in zip(classes, boxes):
@@ -27,7 +27,7 @@ class Detector():
     """
 
     def __init__(self, model_name, n_stickers, max_dist_sticker=10, max_dist_ball=40, warmup_steps_ball=10):
-        self.yolo_model = YOLO(f"../weights/model_name/best.pt")
+        self.yolo_model = YOLO(f"../weights/{model_name}/best.pt")
         self.ballDetector = ballDetector(max_dist=max_dist_ball, warmup_steps=warmup_steps_ball)
         self.stickerDetector = stickerDetector(n_stickers=n_stickers, max_dist=max_dist_sticker)
 
@@ -53,7 +53,7 @@ class stickerDetector():
 
     def __call__(self, detection_results, mirror=False):
         """
-        detection_results = YOLOV8 results 
+        detection_results = YOLOV8 results
 
         In contrast to the ballDetector, the stickerDetector uses no warmup-steps, because sticker detection tends to be very solid.
         Make sure that all stickers and only the stickers are detected in the first frame.
@@ -74,7 +74,7 @@ class stickerDetector():
 
         if self.first_frame:
             if len(coords) == self.n_stickers:
-                idxs = np.argsort([c[0] for c in coords]) # Numerating Coords from 
+                idxs = np.argsort([c[0] for c in coords]) # Numerating Coords from
                 if mirror:
                     idxs = idxs[::-1]
                 self.ROIS = {j: coords[i] for j, i in enumerate(idxs)}
@@ -89,15 +89,13 @@ class stickerDetector():
             taken_coord_id = []
             # choosing the coord for each roi, that is closest and checking if dist is over max dist
             for i, roi in self.ROIS.items():
-                min_dist = 10E20 
+                min_dist = 10E20
                 candidate = None
                 candidate_id = None
                 for j, coord in enumerate(coords):
-                    dist = np.linalg.norm(roi - coord) 
+                    dist = np.linalg.norm(roi - coord)
                     if dist < min_dist:
                         if not j in taken_coord_id:  # Prevent double assignments
-                            print("J", j)
-                            print("Taken Coords", taken_coord_id)
                             min_dist = dist
                             candidate = coord
                             candidate_id = j
@@ -151,7 +149,7 @@ class ballDetector():
         # Maybe needs improvement if detection is bad!!
         # location gathering compleated, calculating starting position
         if self.current_warmup_step == self.warmup_steps:
-            
+
             diffs = [[x2 - x1, y2 - y1] for [[x1, y1], [x2, y2]] in zip(self.warmup_regions[:-1], self.warmup_regions[1:])]
             dists = [np.sqrt(x**2 + y **2) for x, y in diffs]
             # removing all measurements that have an exessive distance to the previous measurement
@@ -167,10 +165,10 @@ class ballDetector():
     def __call__(self, detection_results):
         """
         detection_results = YOLOV8 results from detector trained
-        
+
         to detect the ball.
         """
-        
+
         if self. current_warmup_step <= self.warmup_steps:
             print("Warming up", self.current_warmup_step)
             return self._warmup(detection_results)
@@ -178,7 +176,7 @@ class ballDetector():
             detection_results = detection_results[0]  # We only use single frame detection.
             boxes = detection_results.boxes.xyxy.tolist()
             classes = detection_results.boxes.cls
-    
+
             for cl, box in zip(classes, boxes):
                 coord = None
                 if  cl == 0:  # 0 = Ball, 1 = Red Sticker
@@ -194,14 +192,10 @@ class ballDetector():
                         self.max_dist = 20
                         self.ROI = coord
                         return coord
-            
+
             print("Coord was None!!!", coord, classes, boxes)
             return None
 
 
 if __name__=="__main__":
     pass
-
-
-
-
