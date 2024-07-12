@@ -37,7 +37,6 @@ class videoLoader():
         self.totalFrames = len(self.frames)
 
     def __getitem__(self, index):
-
         return self.frames[index]
 
     def __len__(self):
@@ -46,4 +45,3 @@ class videoLoader():
 
 if __name__=="__main__":
     pass
-
