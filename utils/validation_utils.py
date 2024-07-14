@@ -63,7 +63,6 @@ class Validator(stereoCamera):
             self.corners1.append(corners if corners is None else corners[1])
             return
 
-
     def _triangulate(self):
         for corners0, corners1 in zip(self.corners0, self.corners1):
             if corners0 is None or corners1 is None:
@@ -356,3 +355,89 @@ class stickerValidator(videoLoader, stereoCamera):
 
             else:
                 i += 1
+
+
+class manualValidator(videoLoader, stereoCamera):
+    """
+    Allows users to mark two points on frame0 and frame1, triangulates these points, and displays the distance between the triangulated points.
+    """
+
+    def __init__(self, stereo_config_name: str):
+        videoLoader.__init__(self)
+        stereoCamera.__init__(self, name="ValidatorStereoCamera")
+
+        self.load_from_yaml(stereo_config_name)
+
+        self.point0_frame0 = None
+        self.point0_frame1 = None
+        self.point1_frame0 = None
+        self.point1_frame1 = None
+
+    def validate_on(self, video_path: str, frame_idx: int = 100):
+        self.load_video(video_path=video_path)
+        self._load_frames()
+
+        cv2.namedWindow("Frame 0")
+        cv2.setMouseCallback("Frame 0", self._on_mouse_click_frame0)
+
+        cv2.namedWindow("Frame 1")
+        cv2.setMouseCallback("Frame 1", self._on_mouse_click_frame1)
+
+        self._display_frames(frame_idx)
+
+        if (self.point0_frame0 is not None and self.point0_frame1 is not None and
+            self.point1_frame0 is not None and self.point1_frame1 is not None):
+            self._triangulate_and_display_distance()
+
+        cv2.destroyAllWindows()
+
+    def _display_frames(self, frame_idx):
+        self.frame0, self.frame1 = self(self.frames[frame_idx])
+        while True:
+            display_frame0 = self.frame0.copy()
+            display_frame1 = self.frame1.copy()
+
+            if self.point0_frame0 is not None:
+                cv2.circle(display_frame0, self.point0_frame0, 1, (0, 0, 255), -1)
+            if self.point1_frame0 is not None:
+                cv2.circle(display_frame0, self.point1_frame0, 1, (0, 255, 0), -1)
+
+            if self.point0_frame1 is not None:
+                cv2.circle(display_frame1, self.point0_frame1, 1, (0, 0, 255), -1)
+            if self.point1_frame1 is not None:
+                cv2.circle(display_frame1, self.point1_frame1, 1, (0, 255, 0), -1)
+
+            cv2.imshow("Frame 0", display_frame0)
+            cv2.imshow("Frame 1", display_frame1)
+
+            key = cv2.waitKey(1)
+            if key == 27:  # Escape key
+                break
+
+    def _on_mouse_click_frame0(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            if self.point0_frame0 is None:
+                self.point0_frame0 = (x, y)
+                print(f"Point 0 on Frame 0: {self.point0_frame0}")
+            elif self.point1_frame0 is None:
+                self.point1_frame0 = (x, y)
+                print(f"Point 1 on Frame 0: {self.point1_frame0}")
+
+    def _on_mouse_click_frame1(self, event, x, y, flags, param):
+        if event == cv2.EVENT_LBUTTONDOWN:
+            if self.point0_frame1 is None:
+                self.point0_frame1 = (x, y)
+                print(f"Point 0 on Frame 1: {self.point0_frame1}")
+            elif self.point1_frame1 is None:
+                self.point1_frame1 = (x, y)
+                print(f"Point 1 on Frame 1: {self.point1_frame1}")
+
+    def _triangulate_and_display_distance(self):
+        point0_3d = triangulate(self, self.point0_frame0, self.point0_frame1)
+        point1_3d = triangulate(self, self.point1_frame0, self.point1_frame1)
+
+        print(f"Triangulated 3D point 0: {point0_3d}")
+        print(f"Triangulated 3D point 1: {point1_3d}")
+
+        distance = np.linalg.norm(point0_3d - point1_3d)
+        print(f"Distance between points: {distance * 100:.2f} cm")
