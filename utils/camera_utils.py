@@ -99,7 +99,7 @@ def label_corners(img, image_scaling=2):
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     except Exception:
         pass
-    
+
     # Scaling the image for better visibility
     img = cv2.resize(img, [int(img.shape[1]*image_scaling), int(img.shape[0]*image_scaling)])
     # Draws the lines (by user)
@@ -124,7 +124,7 @@ def label_corners(img, image_scaling=2):
         np.save(f'{current_dir}/../labeled_chess_boards/corners/{id}.npy', corners)
 
     # Reversing the Scaling
-    corners /= image_scaling 
+    corners /= image_scaling
     return corners
 
 
@@ -134,7 +134,7 @@ def draw_cutout_corners(img, cam="no cam specified"):
     as a stencil to create cutouts from the image.
 
     You can draw as many points as you like, only the last two inputs will be used.
-    
+
     You can also press "d" to return None (which can be used as an indicator to skip this image)
     """
     global cutout_corners
@@ -143,8 +143,8 @@ def draw_cutout_corners(img, cam="no cam specified"):
         global cutout_corners
         if event == cv2.EVENT_LBUTTONDOWN:
             cutout_corners.append((x, y))
-    
-    while True:        
+
+    while True:
         img_show = np.array(img)
         for point in cutout_corners[-2:]:
             cv2.circle(img_show, point, 2, (0, 255, 0), 2)
@@ -183,7 +183,7 @@ def show_and_switch(img0, img1, corners0, corners1, rows_inner, columns_inner, i
     img1 = cv2.resize(img1, (np.array(img1.shape[:2])[::-1] * image_scaling).astype(np.int32))
     corners0 *= image_scaling
     corners1 *= image_scaling
-    
+
     cv2.putText(img0, f's: switch order of all points',
                 (10, 30), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 255, 0), 1)
     cv2.putText(img0, f'l = switch lines',
@@ -220,12 +220,12 @@ def show_and_switch(img0, img1, corners0, corners1, rows_inner, columns_inner, i
         corners0 = switch_rows(corners0, rows_inner)
         img0 = np.array(img0_old)
         return show_and_switch(np.array(img0_old), np.array(img1_old), corners0 / image_scaling, corners1 / image_scaling, rows_inner, columns_inner, image_scaling)
-    
+
     if key & 0xFF == ord("d"): # Deleting this detection
         cv2.destroyWindow(img0_name)
         cv2.destroyWindow(img1_name)
         return None
-    
+
     if key & 0xFF == 32: # press space to finish
         cv2.destroyWindow(img0_name)
         cv2.destroyWindow(img1_name)
@@ -241,7 +241,7 @@ def print_corners(image, corners, optimized, rows_inner, columns_inner, image_sc
                             (rows_inner, columns_inner),
                             corners * image_scaling,
                             True)
-                                 
+
     for i, [corner] in enumerate(corners):
         cv2.putText(image,
                     f'{i}',
@@ -251,9 +251,9 @@ def print_corners(image, corners, optimized, rows_inner, columns_inner, image_sc
                     0.5,
                     (0, 255, 0),
                     1)
-    cv2.putText(image, "Space: accept, d: decline", 
+    cv2.putText(image, "Space: accept, d: decline",
         (10, 30), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 255, 0),  1)
-    cv2.putText(image, "o: toggle optimizaiton", 
+    cv2.putText(image, "o: toggle optimizaiton",
         (10, 60), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0, 255, 0),  1)
     if optimized:
         cv2.putText(image, "OPTIMIZED CORNERS",
@@ -270,8 +270,8 @@ def corners_sanity_checker(corners, rows_inner, columns_inner, example_image):
     if corners is None:
         return False
     if len(corners) == n_corners:
-        pass 
-    else: 
+        pass
+    else:
         return False
     for corner in corners: # Checking if corner is in image
         x, y = corner.ravel()
@@ -284,7 +284,7 @@ def corner_detection(image_set, image_scaling, cam, rows_inner, columns_inner, f
     image_set = [cv2.resize(img, (np.array(img.shape[:2])[::-1] * image_scaling).astype(int)) for img in image_set]
     image_set_old = np.array(image_set)
     man_image_set_old = image_set_old[:1]
-    
+
     # Drawing the cutout_corners
     cc = draw_cutout_corners(image_set[0], cam)
 
@@ -295,7 +295,7 @@ def corner_detection(image_set, image_scaling, cam, rows_inner, columns_inner, f
     image_set = [img[cc[:, 1].min():cc[:, 1].max(), cc[:, 0].min():cc[:, 0].max()] for img in image_set] # Generate the coutouts
     image_set = [cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY) for img in image_set] # Convert to gray
     man_image_set = image_set[:1] # For manual labeling only one image is used
-    
+
     corners_set = [cv2.findChessboardCorners(img, (rows_inner, columns_inner), None) for img in image_set]
     # Removes the image_set of unsuccessful corner-predictions. res[1] = corner-coordinates, res[1] = ret
     image_set = [image_set[i] for i, res in enumerate(corners_set) if res[0]]
@@ -310,7 +310,7 @@ def corner_detection(image_set, image_scaling, cam, rows_inner, columns_inner, f
                 for img, image_corners in zip(image_set, corners_set)]
             break
 
-        elif not detection_success and fallback_manual: 
+        elif not detection_success and fallback_manual:
             image_set = man_image_set
             image_set_old = man_image_set_old
             corners_set = [label_corners(image_set_old[0], image_scaling=1)]
@@ -320,23 +320,23 @@ def corner_detection(image_set, image_scaling, cam, rows_inner, columns_inner, f
 
         elif not detection_success and not fallback_manual:
             return None # detection failed
-   
+
     corners_set = [np.array([(np.array(coord) + offset) / image_scaling for (coord) in image_corners], dtype=np.float32)
             for image_corners in corners_set] # Reversing the image scaling
     optimized_corners_set = [np.array([(np.array(coord) + offset) / image_scaling for (coord) in image_corners], dtype=np.float32)
             for image_corners in optimized_corners_set] # Reversing the image scaling
-    
+
     optimized = True # Toggel user can switch to False if the optimizations are not good
     while True:
-        img_show = print_corners(np.array(image_set_old[0]), 
+        img_show = print_corners(np.array(image_set_old[0]),
                                  optimized_corners_set[0] if optimized else corners_set[0],
                                  optimized,
-                                 rows_inner, 
+                                 rows_inner,
                                  columns_inner,
-                                 image_scaling) 
+                                 image_scaling)
         cv2.imshow(f'Camera: {cam}', img_show)
         key = cv2.waitKey(0)
-        if key & 0xFF == ord("d"): # Deleting this detection           
+        if key & 0xFF == ord("d"): # Deleting this detection
             cv2.destroyWindow(f'Camera: {cam}')
             delete = True
             break
@@ -344,9 +344,9 @@ def corner_detection(image_set, image_scaling, cam, rows_inner, columns_inner, f
         if key & 0xFF == 32: # press space to finish
             cv2.destroyWindow(f'Camera: {cam}')
             delete = False
-            break 
+            break
 
-        if key & 0xFF == ord("o"): # press o to switch between optimized and unoptimized corners_set 
+        if key & 0xFF == ord("o"): # press o to switch between optimized and unoptimized corners_set
             cv2.destroyWindow(f'Camera: {cam}')
             optimized = not optimized
 
@@ -378,7 +378,7 @@ class stereoCamera():
             anchor_point
             projection_error
             camera_matrix
-            optimized_camera_matrix 
+            optimized_camera_matrix
             distortion
         """
         def recursive_defaultdict():
@@ -442,7 +442,7 @@ class stereoCamera():
 
     def calibrate(self,
                   image_sets:list,
-                  cam:int, 
+                  cam:int,
                   rows:int=8,
                   columns:int=10,
                   edge_length:float=0.005,
@@ -469,19 +469,19 @@ class stereoCamera():
         for image_set in image_sets:
             image_set = [self(img)[cam] for img in image_set]
 
-            corners = corner_detection(image_set=image_set, 
-                                       image_scaling=image_scaling, 
+            corners = corner_detection(image_set=image_set,
+                                       image_scaling=image_scaling,
                                        cam=cam,
                                        rows_inner=rows_inner,
                                        columns_inner=columns_inner,
                                        fallback_manual=fallback_manual)
 
-            if corners is None: # Corners can be set to none if detection failed 
-                continue 
+            if corners is None: # Corners can be set to none if detection failed
+                continue
 
             imgpoints.extend(corners)
             objpoints.extend([objpoint_one_image for _ in corners]) # because corners were created by a set of similar images
-            
+
         width = image_sets[0][0].shape[1]
         height = image_sets[0][0].shape[0]
         assert imgpoints != [], "No Corners detected!"
@@ -513,30 +513,30 @@ class stereoCamera():
                          opip1ip2=None,
                          image_scaling=2,
                          fallback_manual=True):
-        
+
         assert self.conf["camera_matrix"][0] is not None and self.conf["camera_matrix"][1] is not None, \
             "Calibrate both cameras first!"
         assert image_sets[0][0].shape == image_sets[0][1].shape, \
                 "Both cameras must have the same resolution for stereo-calibration"
 
-        rows_inner = rows - 1  # only inner chessboard-edges are used         
+        rows_inner = rows - 1  # only inner chessboard-edges are used
         columns_inner = columns - 1
         imgpoints_0 = [] # Pixel Coordinates
         imgpoints_1 = []
         objpoints = [] # World Coordinates
-        objpoint_one_image = generate_objectpoints(rows_inner=rows_inner, columns_inner=columns_inner, edge_length=edge_length)         
+        objpoint_one_image = generate_objectpoints(rows_inner=rows_inner, columns_inner=columns_inner, edge_length=edge_length)
 
         for image_set in image_sets:
-            
+
             if opip1ip2 is not None: # opip1ip2 can be used to pass objpoints and imagepoints from previous detections (For Debugging).
                 continue
-            
+
             image_set_0 = []
             image_set_1 = []
             for image in image_set: # Cutout the camera-regions from the images
                 img_0, img_1 = self(image)
                 image_set_0.append(img_0)
-                image_set_1.append(img_1) 
+                image_set_1.append(img_1)
 
 
             if undistort:
@@ -545,17 +545,17 @@ class stereoCamera():
 
             corners_0 = corner_detection(image_set=image_set_0,
                                          image_scaling=image_scaling,
-                                         cam=0, 
+                                         cam=0,
                                          rows_inner=rows_inner,
                                          columns_inner=columns_inner,
                                          fallback_manual=fallback_manual)
-                                        
+
             if corners_0 is None:
                 continue
-            
+
             corners_1 = corner_detection(image_set=image_set_1,
                                          image_scaling=image_scaling,
-                                         cam=1, 
+                                         cam=1,
                                          rows_inner=rows_inner,
                                          columns_inner=columns_inner,
                                          fallback_manual=fallback_manual)
@@ -565,17 +565,17 @@ class stereoCamera():
 
             else:
                 corners_0, corners_1 = show_and_switch(img0=image_set_0[0],
-                                                       img1=image_set_1[0], 
-                                                       corners0=corners_0[0], 
-                                                       corners1=corners_1[0], 
-                                                       rows_inner=rows_inner, 
-                                                       columns_inner=columns_inner, 
+                                                       img1=image_set_1[0],
+                                                       corners0=corners_0[0],
+                                                       corners1=corners_1[0],
+                                                       rows_inner=rows_inner,
+                                                       columns_inner=columns_inner,
                                                        image_scaling=image_scaling)
                 imgpoints_0.extend([corners_0])
                 imgpoints_1.extend([corners_1])
                 objpoints.extend([objpoint_one_image]) # In show and switch each corner_set is reduced to only the first image_corners. This can be changed in the future to increase precision
                 # append could be used here instead of extend.
-        
+
         height, width = image_sets[0][1].shape[:2]
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.00001)
         assert objpoints != [], "No Corners were detected!"
@@ -617,7 +617,7 @@ class stereoCamera():
         """
         Set an anchor point on the image using the mouse click.
         """
-        anchor_point = None  
+        anchor_point = None
 
         def mouse_callback(event, x, y, flags, param):
             if event == cv2.EVENT_LBUTTONDOWN:
@@ -635,9 +635,9 @@ class stereoCamera():
             img_with_text = img.copy()
             img_with_text = cv2.resize(img_with_text, (np.array(img.shape[:2])[::-1] * image_scaling).astype(int))
             cv2.circle(img_with_text, anchor_point, 2, (0, 255, 0), 2)
-            cv2.putText(img_with_text, line0, (10, 30), font, 
+            cv2.putText(img_with_text, line0, (10, 30), font,
                 font_scale, color, thickness)
-            cv2.putText(img_with_text, line1, (10, 60), font, 
+            cv2.putText(img_with_text, line1, (10, 60), font,
                 font_scale, color, thickness)
             cv2.imshow(win_name, img_with_text)
             cv2.setMouseCallback(win_name, mouse_callback)
@@ -687,12 +687,10 @@ class stereoCamera():
         frame0 = image[int(start_point0[1]): int(end_point0[1]), int(start_point0[0]): int(end_point0[0])]
         frame1 = image[int(start_point1[1]): int(end_point1[1]), int(start_point1[0]): int(end_point1[0])]
 
-        # frame0 should be mirror frame, please use this convention
+        # frame0 should be mirror frame
         frame0 = np.fliplr(frame0)
 
-        return np.ascontiguousarray(frame0), np.ascontiguousarray(frame1) 
+        return np.ascontiguousarray(frame0), np.ascontiguousarray(frame1)
 
 if __name__ == "__main__":
-    pass    
-
-
+    pass

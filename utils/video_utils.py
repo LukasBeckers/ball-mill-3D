@@ -1,6 +1,13 @@
 import cv2
+import logging
 import numpy as np
+from typing import *
 
+
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+logger = logging.getLogger(__name__)
 
 class videoLoader():
     """
@@ -12,7 +19,9 @@ class videoLoader():
         self.index = 0
         pass
 
-    def _load_frames(self):
+    def _load_frames(self) -> np.ndarray:
+        assert self.cap is not None, "Load a video first using the 'load_video' method."
+
         frames = []
         i = 0
         while (self.cap.isOpened()):
@@ -24,19 +33,24 @@ class videoLoader():
                 break
         return frames
 
-    def load_video(self, video_path):
+    def load_video(self, video_path: str):
         """
         Loads all frames from the video stored at "video_path",
         and stores the frames at self.frames
         """
+        assert type(video_path) == str, "video_path must be of type string."
+
         self.cap = cv2.VideoCapture(video_path)
+
         if not self.cap.isOpened():
-            print(f"Error opening video file {video_path}!")
+            logging.error(f"Error opening video file {video_path}!")
+            raise FileNotFoundError(f"Error opening video file {video_path}!")
 
         self.frames = np.array(self._load_frames())
         self.totalFrames = len(self.frames)
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> np.ndarray:
+        assert type(index) == int, "index must be of type int."
         return self.frames[index]
 
     def __len__(self):

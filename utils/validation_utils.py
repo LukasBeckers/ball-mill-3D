@@ -10,7 +10,6 @@ from itertools import combinations
 
 
 class chessboardValidator(stereoCamera):
-
     def __init__(self):
         super(stereoCamera).__init__()
         self.frames0 = []
