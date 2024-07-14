@@ -50,7 +50,7 @@ class stickerDetector():
         self.first_frame = True
         self.n_stickers = n_stickers
 
-    def __call__(self, detection_results, mirror=False):
+    def __call__(self, detection_results, mirror=False, verbose=False):
         """
         detection_results = YOLOV8 results
 
@@ -80,8 +80,9 @@ class stickerDetector():
                 self.first_frame = False
                 return self.ROIS
             else:
-                print(
-                    f"First frame detection had {len(coords)} stickers detected, the real number of stickers should be {self.n_stickers}, skipping!")
+                if verbose:
+                    print(
+                        f"First frame detection had {len(coords)} stickers detected, the real number of stickers should be {self.n_stickers}, skipping!")
                 return None
         else:
             results = {}
@@ -100,7 +101,8 @@ class stickerDetector():
                             candidate_id = j
 
                 if min_dist > self.max_dist:
-                    print(f"Over max dist in sticker detection! ROI: {i}, {roi} min-dist: {min_dist}, threshold: {self.max_dist}")
+                    if verbose:
+                        print(f"Over max dist in sticker detection! ROI: {i}, {roi} min-dist: {min_dist}, threshold: {self.max_dist}")
                     return None
                 else:
                     results[i] = candidate
@@ -112,7 +114,8 @@ class stickerDetector():
             return results
 
         else:
-            print("Not enough stickers detected!")
+            if verbose:
+                print("Not enough stickers detected!")
             return None
 
 
@@ -160,7 +163,7 @@ class ballDetector():
         return None
 
 
-    def __call__(self, detection_results):
+    def __call__(self, detection_results, verbose=False):
         """
         detection_results = YOLOV8 results from detector trained
 
@@ -168,7 +171,8 @@ class ballDetector():
         """
 
         if self. current_warmup_step <= self.warmup_steps:
-            print("Warming up", self.current_warmup_step)
+            if verbose:
+                print("Warming up", self.current_warmup_step)
             return self._warmup(detection_results)
         else:
             detection_results = detection_results[0]  # We only use single frame detection.
@@ -184,7 +188,8 @@ class ballDetector():
                     dist = np.sqrt((coord[0]-self.ROI[0])**2 + (coord[1] - self.ROI[1])**2)
                     if dist > self.max_dist:
                         self.max_dist += 10
-                        print("Over max dist in ball-detection!")
+                        if verbose:
+                            print("Over max dist in ball-detection!")
                         return None
                     else:
                         self.max_dist = 20
