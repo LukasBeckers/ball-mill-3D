@@ -9,7 +9,7 @@ import cv2
 from itertools import combinations
 
 
-class Validator(stereoCamera):
+class chessboardValidator(stereoCamera):
 
     def __init__(self):
         super(stereoCamera).__init__()
@@ -368,12 +368,13 @@ class manualValidator(videoLoader, stereoCamera):
 
         self.load_from_yaml(stereo_config_name)
 
+    def validate_on(self, video_path: str, frame_idx: int = 100):
+
         self.point0_frame0 = None
         self.point0_frame1 = None
         self.point1_frame0 = None
         self.point1_frame1 = None
 
-    def validate_on(self, video_path: str, frame_idx: int = 100):
         self.load_video(video_path=video_path)
         self._load_frames()
 
