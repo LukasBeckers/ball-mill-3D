@@ -1,13 +1,14 @@
 import cv2
 import logging
 import numpy as np
-from typing import *
+from typing import List
 
 
 logging.basicConfig(level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 logger = logging.getLogger(__name__)
+
 
 class videoLoader():
     """
@@ -19,7 +20,7 @@ class videoLoader():
         self.index = 0
         pass
 
-    def _load_frames(self) -> np.ndarray:
+    def _load_frames(self) -> List[np.ndarray]:
         assert self.cap is not None, "Load a video first using the 'load_video' method."
 
         frames = []
@@ -53,7 +54,7 @@ class videoLoader():
         assert type(index) == int, "index must be of type int."
         return self.frames[index]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.totalFrames
 
 

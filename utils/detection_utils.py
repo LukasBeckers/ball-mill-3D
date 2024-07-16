@@ -162,7 +162,6 @@ class ballDetector():
             self.ROI = self.warmup_regions[-1]
         return None
 
-
     def __call__(self, detection_results, verbose=False):
         """
         detection_results = YOLOV8 results from detector trained

@@ -5,6 +5,8 @@ What I painfully learned in this file:
 
 """
 
+import logging
+from typing import List, Tuple, Any, Union
 import cv2
 import torch
 import uuid
@@ -368,7 +370,7 @@ def generate_objectpoints(rows_inner, columns_inner, edge_length):
 
 
 class stereoCamera():
-    def __init__(self, name="noName", **kwargs):
+    def __init__(self, name: str = "noName", **kwargs):
         """
         Possible **kwargs are all dicts with the keys = int(camera_index) ie. 0 or 1:
 
@@ -381,6 +383,8 @@ class stereoCamera():
             optimized_camera_matrix
             distortion
         """
+        assert type(name) == str, "name must be type str."
+
         def recursive_defaultdict():
             return defaultdict(lambda: None)
 
@@ -389,18 +393,21 @@ class stereoCamera():
                                  for key, value in kwargs.items()})
         self.name = name
 
-    def save_to_yaml(self, filename="camera_config.yaml"):
+    def save_to_yaml(self, filename: str = "camera_config.yaml"):
         """
         Saves the calculated parameters like "camera_matrix" etc., stored in self.conf to a yaml file
         the yaml file can be found at BallMill3d/config/<config_name>.yaml
         """
-        def convet_to_list(obj):
+        assert type(filename) == str, "filename must be type str."
+
+        def convet_to_list(obj: Union[list, tuple, np.ndarray, torch.Tensor, Any]) -> Union[list, Any]:
             # converts the default dict to a list.
             if isinstance(obj, (list, tuple)):
                 return [convet_to_list(o) for o in obj]
             elif isinstance(obj, (np.ndarray, torch.Tensor)):
                 return obj.tolist()
             return obj
+
         data_to_save = {'name': self.name}
         for key, value in self.conf.items():
             value = {k: convet_to_list(v) for k, v in value.items()}
@@ -410,10 +417,12 @@ class stereoCamera():
         with open(os.path.join(os.path.dirname(current_dir), filename), 'w') as file:
             yaml.dump(data_to_save, file)
 
-    def load_from_yaml(self, filename=f"camera_config.yaml"):
+    def load_from_yaml(self, filename: str = f"camera_config.yaml"):
         """
         Loads the configs stored to a yaml file by "save_to_yaml" method
         """
+        assert type(filename) == str, "filename must be type str."
+
         filename = f"config/{filename}"
         with open(os.path.join(os.path.dirname(current_dir), filename), 'r') as file:
             data_loaded = yaml.load(file, Loader=SafeLoader)
@@ -427,10 +436,11 @@ class stereoCamera():
                                 {key: defaultdict(lambda: None, {k: v for k, v in value.items()})
                                  for key, value in data_loaded.items()})
 
-    def undistort_image(self, img, cam):
+    def undistort_image(self, img: np.ndarray, cam: int):
         """
         Un-distorts an image using the camera_matrix and the distortion values obtained by camera calibration.
         """
+        assert type(img) = np.ndarray, "img must be of type np.ndarray."
 
         optim_camera_matrix = self.conf["optimized_camera_matrix"][cam]
         img = cv2.undistort(img, np.array(self.conf["camera_matrix"][cam]),
