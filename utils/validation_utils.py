@@ -49,7 +49,7 @@ class chessboardValidator(stereoCamera):
             self.corners1.append(None)
             return
         else:
-            corners = show_and_switch(img0=frame0,
+            ret, corners0, corners1 = show_and_switch(img0=frame0,
                                       img1=frame1,
                                       corners0=corners0[0],
                                       corners1=corners1[0],
@@ -57,10 +57,15 @@ class chessboardValidator(stereoCamera):
                                       columns_inner=columns - 1,
                                       image_scaling=image_scaling)
 
-            # corners either None or (corners0, corners1)
-            self.corners0.append(corners if corners is None else corners[0])
-            self.corners1.append(corners if corners is None else corners[1])
-            return
+            if ret:
+                self.corners0.append(corners0)
+                self.corners1.append(corners1)
+                return
+
+            else:
+                self.corners0.append(None)
+                self.corners1.append(None)
+                return
 
     def _triangulate(self):
         for corners0, corners1 in zip(self.corners0, self.corners1):

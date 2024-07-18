@@ -5,25 +5,30 @@ What I painfully learned in this file:
 
 """
 
+import numpy as np
 import logging
-from typing import List, Tuple, Any, Union
+from typing import List, Tuple, Any, Union, Optional as Opt
 import cv2
 import torch
 import uuid
 import pickle as pk
 from collections import defaultdict
+from ultralytics.utils.plotting import Optional
 import yaml
 from yaml import SafeLoader
 import os
 
-from utils.video_utils import *
 
 # Get the directory of the current script
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def switch_rows(corners, len_row):
+def switch_rows(corners: np.ndarray, len_row: int) -> np.ndarray:
     "Switches the rows in the chessboard corner detection"
+    assert isinstance(corners, np.ndarray), f"corners must be of type np.ndarray, is {type(corners)}"
+    assert isinstance(len_row, int), f"len_row must be of type int, is {type(len_row)}"
+    assert corners.ndim == 2 and corners.shape[1] == 2, f"corners must have shape [N, 2], is {corners.shape}"
+
     switched_corners = []
     row = []
     for corner in corners:
@@ -34,10 +39,13 @@ def switch_rows(corners, len_row):
     return np.array(switched_corners)
 
 
-def draw_lines(img):
+def draw_lines(img: np.ndarray) -> Tuple[bool, np.ndarray, np.ndarray]:
+    assert isinstance(img, np.ndarray)
+
     global line  # line = (x1, y1, x2, y2)
     line = []
     lines = []
+
     def mouse_callback(event, x, y, flags, param):
         global line
         if event == cv2.EVENT_LBUTTONDOWN:
@@ -64,20 +72,26 @@ def draw_lines(img):
             break
         if key & 0xFF == ord("d"): # Pressing d skipps this image
             cv2.destroyWindow("Drawing Lines")
-            return None, None
+
+            return False, np.array(lines), img_old
+
         if len(line) == 4:
             lines.append(line)
             line = []
             img = np.array(img_old)
             for l in lines:
                 cv2.line(img, (l[0], l[1]), (l[2], l[3]), color=(0, 255, 0), thickness=1)
-    return lines, img_old
+
+    return True, np.array(lines), img_old
 
 
-def line_intersection(lines):
+def line_intersection(lines: np.ndarray) -> np.ndarray:
     """
     Finds the intersection of two lines given in Hesse normal form.
     """
+    assert isinstance(lines, np.ndarray), f"lines must be of type np.ndarray, is {type(lines)}"
+    assert len(lines.shape)==2 and lines.shape[1] == 4, f"lines must be of shape [N, 4], is {lines.shape}"
+
     intersections = []
     for i, line0 in enumerate(lines):
         for line1 in lines[i + 1:]:
@@ -88,14 +102,18 @@ def line_intersection(lines):
             py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / (
                     (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4) + 1e-10)
             intersections.append((px, py))
+
     return np.array(intersections)
 
 
-def label_corners(img, image_scaling=2):
+def label_corners(img: np.ndarray, image_scaling: Union[int, float] = 2) -> Tuple[bool, Opt[np.ndarray]]:
     """
     Allows the user to draw lines on an image, the line intersection will be interpreted as
     corners in a chessboard pattern.
     """
+    assert isinstance(img, np.ndarray), f"img must be of type np.ndarray, is {type(img)}"
+    assert isinstance(image_scaling, (int, float)), f"image_scaling must be of type int or float, is {type(image_scaling)}"
+
     img = np.array(img)
     try:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
@@ -105,10 +123,11 @@ def label_corners(img, image_scaling=2):
     # Scaling the image for better visibility
     img = cv2.resize(img, [int(img.shape[1]*image_scaling), int(img.shape[0]*image_scaling)])
     # Draws the lines (by user)
-    lines, img = draw_lines(img)
-    # The user can decide in draw_lines to mark this image for skipping then draw_lines returns None, None
-    if img is None:
-        return None
+    ret, lines, img = draw_lines(img)
+
+    if not ret:   # if user decides to skip ret will be False
+        return False, None
+
     # Calculates the corners via line-intersection
     corners = line_intersection(lines)
     w, h = img.shape[:2]
@@ -127,10 +146,10 @@ def label_corners(img, image_scaling=2):
 
     # Reversing the Scaling
     corners /= image_scaling
-    return corners
+    return True, corners
 
 
-def draw_cutout_corners(img, cam="no cam specified"):
+def draw_cutout_corners(img: np.ndarray, cam: str = "no cam specified") -> Tuple[bool, Opt[np.ndarray]]:
     """
     Left-click on the image to mark a point, two points will span a rectangle, which will be used
     as a stencil to create cutouts from the image.
@@ -139,6 +158,10 @@ def draw_cutout_corners(img, cam="no cam specified"):
 
     You can also press "d" to return None (which can be used as an indicator to skip this image)
     """
+
+    assert isinstance(img, np.ndarray), f"img must be of type np.ndarray, is {type(img)}"
+    assert isinstance(cam, str), f"cam must be of type str, is {type(cam)}"
+
     global cutout_corners
     cutout_corners = []
     def mouse_callback(event, x, y, flags, param):
@@ -173,12 +196,26 @@ def draw_cutout_corners(img, cam="no cam specified"):
                 break
         if key & 0xFF == ord("d"): # Press d to label this image for skipping.
                 cv2.destroyWindow(f"Camera: {cam}")
-                return None
+                return False, None
                 break
-    return np.array(cutout_corners[-2:], dtype=np.int32)
+    return True, np.array(cutout_corners[-2:], dtype=np.int32)
 
 
-def show_and_switch(img0, img1, corners0, corners1, rows_inner, columns_inner, image_scaling):
+def show_and_switch(img0: np.ndarray,
+        img1: np.ndarray,
+        corners0: np.ndarray,
+        corners1: np.ndarray,
+        rows_inner: int,
+        columns_inner: int,
+        image_scaling: Union[float, int]) -> Tuple[bool, Opt[np.ndarray], Opt[np.ndarray]] :
+
+    assert isinstance(img1, np.ndarray)
+    assert isinstance(corners0, np.ndarray)
+    assert isinstance(corners1, np.ndarray)
+    assert isinstance(rows_inner, int)
+    assert isinstance(columns_inner, int)
+    assert isinstance(image_scaling, (float, int))
+
     img0_old = np.array(img0)
     img1_old = np.array(img1)
     img0 = cv2.resize(img0, (np.array(img0.shape[:2])[::-1] * image_scaling).astype(np.int32))
@@ -226,19 +263,26 @@ def show_and_switch(img0, img1, corners0, corners1, rows_inner, columns_inner, i
     if key & 0xFF == ord("d"): # Deleting this detection
         cv2.destroyWindow(img0_name)
         cv2.destroyWindow(img1_name)
-        return None
+        return False, None, None
 
     if key & 0xFF == 32: # press space to finish
         cv2.destroyWindow(img0_name)
         cv2.destroyWindow(img1_name)
-        return corners0 / image_scaling, corners1 / image_scaling
+        return True, corners0 / image_scaling, corners1 / image_scaling
 
     # Nothing happenes if another key is pressed
     return show_and_switch(np.array(img0_old), np.array(img1_old), corners0 / image_scaling, corners1 / image_scaling, rows_inner, columns_inner, image_scaling)
 
 
-def print_corners(image, corners, optimized, rows_inner, columns_inner, image_scaling):
+def print_corners(image: np.ndarray, corners: np.ndarray, optimized: bool, rows_inner: int, columns_inner: int, image_scaling: Union[int, float]) -> np.ndarray:
     # Shows one example of the drawn chessboard corners
+    assert isinstance(image, np.ndarray)
+    assert isinstance(corners, np.ndarray)
+    assert isinstance(optimized, bool)
+    assert isinstance(rows_inner, int)
+    assert isinstance(columns_inner, int)
+    assert isinstance(image_scaling, (float, int))
+
     cv2.drawChessboardCorners(image,
                             (rows_inner, columns_inner),
                             corners * image_scaling,
@@ -266,7 +310,12 @@ def print_corners(image, corners, optimized, rows_inner, columns_inner, image_sc
     return image
 
 
-def corners_sanity_checker(corners, rows_inner, columns_inner, example_image):
+def corners_sanity_checker(corners: np.ndarray, rows_inner: int, columns_inner: int, example_image: np.ndarray) -> bool:
+    assert isinstance(corners, np.ndarray)
+    assert isinstance(rows_inner, int)
+    assert isinstance(columns_inner, int)
+    assert isinstance(example_image, np.ndarray)
+
     n_corners = rows_inner * columns_inner
 
     if corners is None:
@@ -282,16 +331,23 @@ def corners_sanity_checker(corners, rows_inner, columns_inner, example_image):
     return True
 
 
-def corner_detection(image_set, image_scaling, cam, rows_inner, columns_inner, fallback_manual):
+def corner_detection(image_set: np.ndarray, image_scaling: Union[float, int], cam: int, rows_inner: int, columns_inner: int, fallback_manual: bool)  -> Tuple[bool, Opt[np.ndarray]]:
+    assert isinstance(image_set, np.ndarray)
+    assert isinstance(image_scaling, (float, int))
+    assert isinstance(cam, int)
+    assert isinstance(rows_inner, int)
+    assert isinstance(columns_inner, int)
+    assert isinstance(fallback_manual, bool)
+
     image_set = [cv2.resize(img, (np.array(img.shape[:2])[::-1] * image_scaling).astype(int)) for img in image_set]
     image_set_old = np.array(image_set)
     man_image_set_old = image_set_old[:1]
 
     # Drawing the cutout_corners
-    cc = draw_cutout_corners(image_set[0], cam)
+    ret, cc = draw_cutout_corners(image_set[0], str(cam))
 
-    if cc is None:
-        return None
+    if not ret:
+        return False, None # Detection failed
 
     offset = cc.min(axis=0)
     image_set = [img[cc[:, 1].min():cc[:, 1].max(), cc[:, 0].min():cc[:, 0].max()] for img in image_set] # Generate the coutouts
@@ -316,17 +372,19 @@ def corner_detection(image_set, image_scaling, cam, rows_inner, columns_inner, f
             image_set = man_image_set
             image_set_old = man_image_set_old
             corners_set = [label_corners(image_set_old[0], image_scaling=1)]
-            corners_set = [np.array([np.array(coord) - offset for coord in corners_set[0]], dtype=np.float32) if corners_set[0] is not None else None] # Removes the offset to make corners identical to automatically detected corners
+            # Removes the offset to make corners identical to automatically detected corners
+            corners_set = [np.array([np.array(coord) - offset for coord in corners_set[0]], dtype=np.float32) if corners_set[0] else None]
             fallback_manual = False
             continue
 
         elif not detection_success and not fallback_manual:
-            return None # detection failed
+            return False, None # detection failed
 
     corners_set = [np.array([(np.array(coord) + offset) / image_scaling for (coord) in image_corners], dtype=np.float32)
-            for image_corners in corners_set] # Reversing the image scaling
+        for image_corners in optimized_corners_set if image_corners is not None else None]
+
     optimized_corners_set = [np.array([(np.array(coord) + offset) / image_scaling for (coord) in image_corners], dtype=np.float32)
-            for image_corners in optimized_corners_set] # Reversing the image scaling
+            for image_corners in optimized_corners_set if image_corners is not None else None] # Reversing the image scaling
 
     optimized = True # Toggel user can switch to False if the optimizations are not good
     while True:
@@ -353,19 +411,23 @@ def corner_detection(image_set, image_scaling, cam, rows_inner, columns_inner, f
             optimized = not optimized
 
     if delete:
-        return None
+        return False, None
     if optimized:
         corners_set = optimized_corners_set
 
-    return corners_set
+    return True, corners_set
 
 
-def generate_objectpoints(rows_inner, columns_inner, edge_length):
-
+def generate_objectpoints(rows_inner: int, columns_inner: int, edge_length: Union[int, float]) -> np.ndarray:
     # prepare object points, lower left corner of chessboard will be world coordinate (0, 0, 0)
+    assert isinstance(rows_inner, int)
+    assert isinstance(columns_inner, int)
+    assert isinstance(edge_length, (float, int))
+
     objpoint_one_image = np.zeros((columns_inner * rows_inner, 3), np.float32)
     objpoint_one_image[:, :2] = np.mgrid[0:rows_inner, 0:columns_inner].T.reshape(-1, 2)
     objpoint_one_image = edge_length * objpoint_one_image
+
     return objpoint_one_image
 
 
@@ -412,6 +474,7 @@ class stereoCamera():
         for key, value in self.conf.items():
             value = {k: convet_to_list(v) for k, v in value.items()}
             data_to_save[key] = value
+
         # Writing to a yaml file
         filename = f"config/{filename}"
         with open(os.path.join(os.path.dirname(current_dir), filename), 'w') as file:
@@ -436,29 +499,30 @@ class stereoCamera():
                                 {key: defaultdict(lambda: None, {k: v for k, v in value.items()})
                                  for key, value in data_loaded.items()})
 
-    def undistort_image(self, img: np.ndarray, cam: int):
+    def undistort_image(self, img: np.ndarray, cam: int) -> np.ndarray:
         """
         Un-distorts an image using the camera_matrix and the distortion values obtained by camera calibration.
         """
-        assert type(img) = np.ndarray, "img must be of type np.ndarray."
+        assert isinstance(img, np.ndarray), "img must be of type np.ndarray."
+        assert isinstance(cam, int), "cam must be of type int."
 
         optim_camera_matrix = self.conf["optimized_camera_matrix"][cam]
         img = cv2.undistort(img, np.array(self.conf["camera_matrix"][cam]),
                             np.array(self.conf["distortion"][cam]),
                             None,
                             np.array(optim_camera_matrix))
-        return img
+        return np.array(img)
 
 
     def calibrate(self,
-                  image_sets:list,
-                  cam:int,
-                  rows:int=8,
-                  columns:int=10,
-                  edge_length:float=0.005,
-                  image_scaling:float=2,
-                  fallback_manual:bool=False,
-                  optimize_manual_predictions:bool=False
+                  image_sets: list,
+                  cam: int,
+                  rows: int=8,
+                  columns: int=10,
+                  edge_length: float=0.005,
+                  image_scaling: float=2,
+                  fallback_manual: bool=False,
+                  optimize_manual_predictions: bool=False
                   ):
         """
         Calibrates a single camera of this stereoCamera instance.
@@ -466,6 +530,15 @@ class stereoCamera():
 
         image_sets are lists of lists of images, use one list of image for each video
         """
+        assert isinstance(image_sets, list), "image_sets should be of type list"
+        assert isinstance(cam, int), "cam should be of type int"
+        assert isinstance(rows, int), "rows should be of type int"
+        assert isinstance(columns, int), "columns should be of type int"
+        assert isinstance(edge_length, float), "edge_length should be of type float"
+        assert isinstance(image_scaling, float), "image_scaling should be of type float"
+        assert isinstance(fallback_manual, bool), "fallback_manual should be of type bool"
+        assert isinstance(optimize_manual_predictions, bool), "optimize_manual_predictions should be of type bool"
+
         # Only chessboard corners with all four sides being squares can be detected. (B W) Therefore the detectable
         # chessboard rows and columns are one less.                                  (W B)
         rows_inner = rows - 1
@@ -479,14 +552,14 @@ class stereoCamera():
         for image_set in image_sets:
             image_set = [self(img)[cam] for img in image_set]
 
-            corners = corner_detection(image_set=image_set,
+            ret, corners = corner_detection(image_set=image_set,
                                        image_scaling=image_scaling,
                                        cam=cam,
                                        rows_inner=rows_inner,
                                        columns_inner=columns_inner,
                                        fallback_manual=fallback_manual)
 
-            if corners is None: # Corners can be set to none if detection failed
+            if not ret: # Corners can be set to none if detection failed
                 continue
 
             imgpoints.extend(corners)
@@ -494,6 +567,7 @@ class stereoCamera():
 
         width = image_sets[0][0].shape[1]
         height = image_sets[0][0].shape[0]
+
         assert imgpoints != [], "No Corners detected!"
         ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(np.array(objpoints),
                                                            np.array(imgpoints),
@@ -514,15 +588,23 @@ class stereoCamera():
         return
 
     def stereo_calibrate(self,
-                         image_sets,
-                         rows=8,
-                         columns=10,
-                         edge_length=0.005,
-                         undistort=True,
-                         stereocalibration_flags = cv2.CALIB_FIX_PRINCIPAL_POINT,
-                         opip1ip2=None,
-                         image_scaling=2,
-                         fallback_manual=True):
+                         image_sets: list,
+                         cam: int,
+                         rows: int=8,
+                         columns: int=10,
+                         edge_length: float=0.005,
+                         image_scaling: float=2,
+                         undistort: bool=False,
+                         fallback_manual: bool=False,
+                         stereocalibration_flags = cv2.CALIB_FIX_PRINCIPAL_POINT) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        assert isinstance(image_sets, list), "image_sets should be of type list"
+        assert isinstance(cam, int), "cam should be of type int"
+        assert isinstance(rows, int), "rows should be of type int"
+        assert isinstance(columns, int), "columns should be of type int"
+        assert isinstance(edge_length, float), "edge_length should be of type float"
+        assert isinstance(image_scaling, float), "image_scaling should be of type float"
+        assert isinstance(undistort, bool), "undistort should be of type bool"
+        assert isinstance(fallback_manual, bool), "fallback_manual should be of type bool"
 
         assert self.conf["camera_matrix"][0] is not None and self.conf["camera_matrix"][1] is not None, \
             "Calibrate both cameras first!"
@@ -538,9 +620,6 @@ class stereoCamera():
 
         for image_set in image_sets:
 
-            if opip1ip2 is not None: # opip1ip2 can be used to pass objpoints and imagepoints from previous detections (For Debugging).
-                continue
-
             image_set_0 = []
             image_set_1 = []
             for image in image_set: # Cutout the camera-regions from the images
@@ -548,43 +627,45 @@ class stereoCamera():
                 image_set_0.append(img_0)
                 image_set_1.append(img_1)
 
-
             if undistort:
                 image_set_0 = [self.undistort_image(img, 0) for img in image_set_0]
                 image_set_1 = [self.undistort_image(img, 1) for img in image_set_1]
 
-            corners_0 = corner_detection(image_set=image_set_0,
+            ret, corners_0 = corner_detection(image_set=image_set_0,
                                          image_scaling=image_scaling,
                                          cam=0,
                                          rows_inner=rows_inner,
                                          columns_inner=columns_inner,
                                          fallback_manual=fallback_manual)
 
-            if corners_0 is None:
+            if not ret:
                 continue
 
-            corners_1 = corner_detection(image_set=image_set_1,
+            ret, corners_1 = corner_detection(image_set=image_set_1,
                                          image_scaling=image_scaling,
                                          cam=1,
                                          rows_inner=rows_inner,
                                          columns_inner=columns_inner,
                                          fallback_manual=fallback_manual)
 
-            if corners_1 is None:
+            if not ret:
                 continue
 
-            else:
-                corners_0, corners_1 = show_and_switch(img0=image_set_0[0],
-                                                       img1=image_set_1[0],
-                                                       corners0=corners_0[0],
-                                                       corners1=corners_1[0],
-                                                       rows_inner=rows_inner,
-                                                       columns_inner=columns_inner,
-                                                       image_scaling=image_scaling)
+            ret, corners_0, corners_1 = show_and_switch(img0=image_set_0[0],
+                                                    img1=image_set_1[0],
+                                                    corners0=corners_0[0],
+                                                    corners1=corners_1[0],
+                                                    rows_inner=rows_inner,
+                                                    columns_inner=columns_inner,
+                                                    image_scaling=image_scaling)
+
+            if ret:
                 imgpoints_0.extend([corners_0])
                 imgpoints_1.extend([corners_1])
                 objpoints.extend([objpoint_one_image]) # In show and switch each corner_set is reduced to only the first image_corners. This can be changed in the future to increase precision
                 # append could be used here instead of extend.
+            else:
+                continue
 
         height, width = image_sets[0][1].shape[:2]
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 1000, 0.00001)
@@ -621,12 +702,16 @@ class stereoCamera():
         print(f"New Camera Matrix Mirror: {CM0}")
         print(f"New Distortion Front", dist1)
         cv2.destroyAllWindows()
-        return objpoints, imgpoints_0, imgpoints_1, image_sets
+        return np.array(objpoints), np.array(imgpoints_0), np.array(imgpoints_1), np.array(image_sets)
 
-    def set_anchor_point(self, img, cam, image_scaling=1):
+    def set_anchor_point(self, img: np.ndarray, cam: int, image_scaling: Union[int, float]=1):
         """
         Set an anchor point on the image using the mouse click.
         """
+        assert isinstance(img, np.ndarray), "img should be of type np.ndarray"
+        assert isinstance(cam, int), "cam should be of type int"
+        assert isinstance(image_scaling, (int, float)), "image_scaling should be of type int or float"
+
         anchor_point = None
 
         def mouse_callback(event, x, y, flags, param):
@@ -659,10 +744,12 @@ class stereoCamera():
         if anchor_point is not None:
             self.conf["anchor_point"][cam] = anchor_point
 
-    def draw_camera_region(self, img):
+    def draw_camera_region(self, img: np.ndarray) -> np.ndarray:
         """
         Draws the camera regions for inspection based on the anchor points and the camera-size
         """
+        assert isinstance(img, np.ndarray)
+
         for anchor_point in self.conf["anchor_point"].values():
             # Drawing camera
             start_point = anchor_point - np.array(self.conf["camera_size"][0])/2
@@ -671,7 +758,7 @@ class stereoCamera():
 
         return img
 
-    def __call__(self, image):
+    def __call__(self, image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
 
         # Camera0
         anchor_point0 = np.array(self.conf["anchor_point"][0])
