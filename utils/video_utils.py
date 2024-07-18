@@ -1,7 +1,7 @@
 import cv2
 import logging
 import numpy as np
-from typing import List
+from typing import List, Union
 
 
 logging.basicConfig(level=logging.DEBUG,
@@ -50,8 +50,8 @@ class videoLoader():
         self.frames = np.array(self._load_frames())
         self.totalFrames = len(self.frames)
 
-    def __getitem__(self, index: int) -> np.ndarray:
-        assert type(index) == int, "index must be of type int."
+    def __getitem__(self, index: Union[int, slice]) -> np.ndarray:
+        assert isinstance(index, (int, slice)), f"index must be of type int or slice, is {type(index)}"
         return self.frames[index]
 
     def __len__(self) -> int:

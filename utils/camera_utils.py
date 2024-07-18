@@ -311,28 +311,35 @@ def print_corners(image: np.ndarray, corners: np.ndarray, optimized: bool, rows_
 
 
 def corners_sanity_checker(corners: np.ndarray, rows_inner: int, columns_inner: int, example_image: np.ndarray) -> bool:
-    assert isinstance(corners, np.ndarray)
-    assert isinstance(rows_inner, int)
-    assert isinstance(columns_inner, int)
-    assert isinstance(example_image, np.ndarray)
+    assert isinstance(corners, np.ndarray), f"corners should be of type np.ndarray, is {type(corners)}"
+    assert isinstance(rows_inner, int), f"rows_inner should be of type int, is {type(rows_inner)}"
+    assert isinstance(columns_inner, int), f"columns_inner should be of type int, is {type(columns_inner)}"
+    assert isinstance(example_image, np.ndarray), f"example_image should be of type np.ndarray, is {type(example_image)}"
+
+    try:
+        corners = corners[0]
+    except IndexError: #empty array
+        return False
 
     n_corners = rows_inner * columns_inner
+    print("n_corners", n_corners)
+    print("Corners", corners, len(corners))
 
-    if corners is None:
-        return False
     if len(corners) == n_corners:
         pass
     else:
+        print("error in len corners", len(corners), n_corners)
         return False
     for corner in corners: # Checking if corner is in image
         x, y = corner.ravel()
         if x < 0 or x >= example_image.shape[1] or y < 0 or y >= example_image.shape[0]:
+            print("corners out of picture")
             return False
     return True
 
 
 def corner_detection(image_set: np.ndarray, image_scaling: Union[float, int], cam: int, rows_inner: int, columns_inner: int, fallback_manual: bool)  -> Tuple[bool, Opt[np.ndarray]]:
-    assert isinstance(image_set, np.ndarray)
+    assert isinstance(image_set, np.ndarray), f"image_set should be of type np.ndarray, is {type(image_set)}"
     assert isinstance(image_scaling, (float, int))
     assert isinstance(cam, int)
     assert isinstance(rows_inner, int)
@@ -356,24 +363,27 @@ def corner_detection(image_set: np.ndarray, image_scaling: Union[float, int], ca
 
     corners_set = [cv2.findChessboardCorners(img, (rows_inner, columns_inner), None) for img in image_set]
     # Removes the image_set of unsuccessful corner-predictions. res[1] = corner-coordinates, res[1] = ret
-    image_set = [image_set[i] for i, res in enumerate(corners_set) if res[0]]
-    image_set_old = [image_set_old[i] for i, res in enumerate(corners_set) if res[0]]
-    corners_set = [res[1] for res in corners_set if res[0]] # Removes unsuccessful detections. res[1] = corner-coordinates, res[0] = ret
-    while True: # Handeling fallback to manual prediction in a loop
-        detection_success = corners_sanity_checker(corners_set[0] if corners_set != [] else None, rows_inner, columns_inner, man_image_set[0])
+    image_set = np.array([image_set[i] for i, result in enumerate(corners_set) if result[0]])
+    image_set_old = np.array([image_set_old[i] for i, result in enumerate(corners_set) if result[0]])
+    corners_set = np.array([result[1] for result in corners_set if result[0]]) # Removes unsuccessful detections. res[1] = corner-coordinates, res[0] = ret
 
+    while True: # Handeling fallback to manual prediction in a loop
+        detection_success = corners_sanity_checker(corners_set, rows_inner, columns_inner, man_image_set[0])
+        print("Detection Success", detection_success)
         if detection_success: # Success -> loop breaks
             criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+            print("Cornerset", corners_set, corners_set.shape)
+            print("Imageset", image_set, image_set.shape)
             optimized_corners_set = [cv2.cornerSubPix(np.copy(img), np.copy(image_corners), (11, 11), (-1, -1), criteria)
                 for img, image_corners in zip(image_set, corners_set)]
             break
 
         elif not detection_success and fallback_manual:
-            image_set = man_image_set
-            image_set_old = man_image_set_old
-            corners_set = [label_corners(image_set_old[0], image_scaling=1)]
+            image_set = np.array(man_image_set)
+            image_set_old = np.array(man_image_set_old)
+            corners_set = label_corners(image_set_old[0], image_scaling=1)
             # Removes the offset to make corners identical to automatically detected corners
-            corners_set = [np.array([np.array(coord) - offset for coord in corners_set[0]], dtype=np.float32) if corners_set[0] else None]
+            corners_set = np.array([np.array([np.array(coord) - offset for coord in corners_set[1]], dtype=np.float32) if corners_set[0] else None])
             fallback_manual = False
             continue
 
@@ -381,10 +391,12 @@ def corner_detection(image_set: np.ndarray, image_scaling: Union[float, int], ca
             return False, None # detection failed
 
     corners_set = [np.array([(np.array(coord) + offset) / image_scaling for (coord) in image_corners], dtype=np.float32)
-        for image_corners in optimized_corners_set if image_corners is not None else None]
+        if image_corners is not None else None
+        for image_corners in corners_set]
 
     optimized_corners_set = [np.array([(np.array(coord) + offset) / image_scaling for (coord) in image_corners], dtype=np.float32)
-            for image_corners in optimized_corners_set if image_corners is not None else None] # Reversing the image scaling
+            if image_corners is not None else None
+            for image_corners in optimized_corners_set]
 
     optimized = True # Toggel user can switch to False if the optimizations are not good
     while True:
@@ -513,15 +525,14 @@ class stereoCamera():
                             np.array(optim_camera_matrix))
         return np.array(img)
 
-
     def calibrate(self,
                   image_sets: list,
                   cam: int,
                   rows: int=8,
                   columns: int=10,
                   edge_length: float=0.005,
-                  image_scaling: float=2,
-                  fallback_manual: bool=False,
+                  image_scaling: Union[float, int]=2,
+                  fallback_manual: bool=True,
                   optimize_manual_predictions: bool=False
                   ):
         """
@@ -535,7 +546,7 @@ class stereoCamera():
         assert isinstance(rows, int), "rows should be of type int"
         assert isinstance(columns, int), "columns should be of type int"
         assert isinstance(edge_length, float), "edge_length should be of type float"
-        assert isinstance(image_scaling, float), "image_scaling should be of type float"
+        assert isinstance(image_scaling, (float, int)), "image_scaling should be of type float"
         assert isinstance(fallback_manual, bool), "fallback_manual should be of type bool"
         assert isinstance(optimize_manual_predictions, bool), "optimize_manual_predictions should be of type bool"
 
@@ -550,8 +561,7 @@ class stereoCamera():
                                      columns_inner=columns_inner,
                                      edge_length=edge_length)
         for image_set in image_sets:
-            image_set = [self(img)[cam] for img in image_set]
-
+            image_set = np.array([self(img)[cam] for img in image_set])
             ret, corners = corner_detection(image_set=image_set,
                                        image_scaling=image_scaling,
                                        cam=cam,

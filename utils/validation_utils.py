@@ -38,12 +38,12 @@ class chessboardValidator(stereoCamera):
         self.rows_cols.append([rows, columns])
 
     def _detect_corners(self, frame0, frame1, rows, columns, image_scaling=2):
-        corners0 = corner_detection(image_set=[frame0], image_scaling=image_scaling, cam=0, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
+        corners0 = corner_detection(image_set=np.array([frame0]), image_scaling=image_scaling, cam=0, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
         if corners0 is None:
             self.corners0.append(None)
             self.corners1.append(None)
             return
-        corners1 = corner_detection(image_set=[frame1], image_scaling=image_scaling, cam=1, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
+        corners1 = corner_detection(image_set=np.array([frame1]), image_scaling=image_scaling, cam=1, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
         if corners1 is None:
             self.corners0.append(None)
             self.corners1.append(None)

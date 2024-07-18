@@ -1,10 +1,10 @@
 import cv2
+import numpy as np
 import os
 from ultralytics import YOLO
-from utils.camera_utils import *
 
 
-def draw_detections(img, detection_results, stickercoords=None):
+def draw_detections(img: np.ndarray, detection_results, stickercoords=None):
     detection_results = detection_results[0]
     boxes = detection_results.boxes.xyxy.tolist()
     classes = detection_results.boxes.cls
