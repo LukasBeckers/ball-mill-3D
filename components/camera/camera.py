@@ -40,7 +40,7 @@ class ICalibrationDataManager(ABC):
 
 class IFrameProvider(ABC):
     @abstractmethod
-    def get_frame(self, video_path: str, i: int) -> np.ndarray:
+    def get_frame(self, camera_name: str, video_path: str, i: int) -> np.ndarray:
         pass
 
 
@@ -83,10 +83,9 @@ class Camera():
 
     def get_frame(self, video_path: str, index: int) -> np.ndarray:
         try:
-            frame = self.frame_provider.get_frame(video_path=video_path, i=index)
+            frame = self.frame_provider.get_frame(camera_name=self.name, video_path=video_path, i=index)
         except IndexError as error:
             raise IndexError ("Error while loading video_frames", error)
-
         return frame
 
     def calibrate(self,
@@ -110,7 +109,7 @@ class Camera():
         for video in videos:
             try:
                 index = 30
-                video_frame = self.frame_provider.get_frame(video_path=video, i=index)
+                video_frame = self.get_frame(video_path=video, index=index)
             except IndexError as error:
                 raise IndexError ("Error while loading video_frames", error)
 
@@ -127,7 +126,7 @@ class Camera():
             raise CalibrationError("Calibration failed because no corners were detected", CalibrationError)
 
 
-        video_frame = self.frame_provider.get_frame(video_path=videos[0], i=0)
+        video_frame = self.get_frame(video_path=videos[0], index=0)
         width = video_frame.shape[1]
         height = video_frame.shape[0]
 
