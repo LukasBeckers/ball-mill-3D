@@ -110,8 +110,7 @@ def label_corners(img: np.ndarray, image_scaling: Union[int, float] = 2) -> Tupl
     """
     Allows the user to draw lines on an image, the line intersection will be interpreted as
     corners in a chessboard pattern.
-    """
-    assert isinstance(img, np.ndarray), f"img must be of type np.ndarray, is {type(img)}"
+    """    assert isinstance(img, np.ndarray), f"img must be of type np.ndarray, is {type(img)}"
     assert isinstance(image_scaling, (int, float)), f"image_scaling must be of type int or float, is {type(image_scaling)}"
 
     img = np.array(img)
