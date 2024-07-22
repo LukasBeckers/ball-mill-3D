@@ -11,12 +11,18 @@ from calibration_manager_utils import ensure_directory_exists
 class CalibrationDataManager(ICalibrationDataManager):
     def __init__(self, storage_dir: str):
         self.storage_dir = storage_dir
+        self.camera_matrix = None
+        self.optimized_camera_matrix = None
+        self.distortion_matrix = None
 
         if not isdir(storage_dir):
            makedirs(storage_dir)
 
     @ensure_directory_exists
     def get_camera_matrix(self, name: str) -> np.ndarray:
+        if self.camera_matrix is not None:
+            return self.camera_matrix
+
         if not isfile(join(self.storage_dir, name, "_camera_matrix.txt")):
             raise NotCalibratedError("No saved camera-matrix found", NotCalibratedError)
         else:
@@ -25,6 +31,9 @@ class CalibrationDataManager(ICalibrationDataManager):
 
     @ensure_directory_exists
     def get_optimized_camera_matrix(self, name: str) -> np.ndarray:
+        if self.optimized_camera_matrix is not None:
+            return self.optimized_camera_matrix
+
         if not isfile(join(self.storage_dir, name, "_optimized_camera_matrix.txt")):
             raise NotCalibratedError("No saved optimized_camera-matrix found", NotCalibratedError)
         else:
@@ -33,6 +42,9 @@ class CalibrationDataManager(ICalibrationDataManager):
 
     @ensure_directory_exists
     def get_distortion_matrix(self, name: str) -> np.ndarray:
+        if self.distortion_matrix is not None:
+            return self.distortion_matrix
+
         if not isfile(join(self.storage_dir, name, "_distortion_matrix.txt")):
             raise NotCalibratedError("No saved distortion-matrix found", NotCalibratedError)
         else:
@@ -41,12 +53,15 @@ class CalibrationDataManager(ICalibrationDataManager):
 
     @ensure_directory_exists
     def save_camera_matrix(self, name:str, camera_matrix: np.ndarray):
+        self.camera_matrix = camera_matrix
         np.savetxt(join(self.storage_dir, name, "_camera_matrix.txt"), camera_matrix)
 
     @ensure_directory_exists
     def save_optimized_camera_matrix(self, name:str, optimized_camera_matrix: np.ndarray):
+        self.optimized_camera_matrix = optimized_camera_matrix
         np.savetxt(join(self.storage_dir, name, "_optimized_camera_matrix.txt"), optimized_camera_matrix)
 
     @ensure_directory_exists
     def save_distortion_matrix(self, name:str, distortion_matrix: np.ndarray):
+        self.distortion_matrix = distortion_matrix
         np.savetxt(join(self.storage_dir, name, "_distortion_matrix.txt"), distortion_matrix)

@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 from ultralytics.data.loaders import Image
 
-from camera.camera import Camera
+from camera.camera import Camera, ICameraFrameProvider
 from camera.camera_utils import CornerDetectionError, generate_objectpoints, CornersOrdererError, ImagePointsExtractionError, StereoCalibrationError
 
 
@@ -15,24 +15,50 @@ class IStereoCornerOrderManager(ABC):
 
 
 class IStereoCalibrationDataManager(ABC):
+
     @abstractmethod
-    def get_
+    def get_translation_matrix(self, name: str) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def get_rotation_matrix(self, name: str) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def save_translation_matrix(self, name: str, translation_matrix: np.ndarray):
+        pass
+
+    @abstractmethod
+    def save_rotation_matrix(self, name: str, rotation_matrix: np.ndarray):
+        pass
+
+    @abstractmethod
+    def save_stereo_calibration_error(self, name: str, stereo_calibration_error: np.ndarray):
+        pass
 
 
 class StereoCamera():
-    def __init__(self, camera0: Camera, camera1: Camera, corner_order_manager:IStereoCornerOrderManager):
+    def __init__(self, name: str, camera0: Camera, camera1: Camera, corner_order_manager:IStereoCornerOrderManager, stereo_calibration_manager: IStereoCalibrationDataManager):
+        self.name = name
         self.camera0 = camera0
         self.camera1 = camera1
         self.corner_order_manger = corner_order_manager
+        self.stereo_calibration_manager = stereo_calibration_manager
 
-        self.stereo_calibration_error = None
-        self.translation_matrix = None
-        self.rotation_matrix = None
+    def get_translation_matrix(self) -> np.ndarray:
+        return self.stereo_calibration_manager.get_translation_matrix(self.name)
 
-    def _get_stereo_frames(self, video_name: str, index: int) -> Tuple[np.ndarray, np.ndarray]:
-        frame1 = self.camera1.get_frame(video_path=video_name, index=index)
-        frame0 = self.camera0.get_frame(video_path=video_name, index=index)
-        return frame0, frame1
+    def get_rotation_matrix(self) -> np.ndarray:
+        return self.stereo_calibration_manager.get_rotation_matrix(self.name)
+
+    def save_translation_matrix(self, translation_matrix: np.ndarray):
+        self.stereo_calibration_manager.save_translation_matrix(self.name, translation_matrix)
+
+    def save_rotation_matrix(self, rotation_matrix: np.ndarray):
+        self.stereo_calibration_manager.save_rotation_matrix(self.name, rotation_matrix)
+
+    def save_stereo_calibration_error(self, stereo_calibration_error: np.ndarray):
+        self.stereo_calibration_manager.save_stereo_calibration_error(self.name, stereo_calibration_error)
 
     def _detect_stereo_corners(self, frame0: np.ndarray, frame1: np.ndarray, rows_inner: int, columns_inner: int) -> Tuple[np.ndarray, np.ndarray]:
         try:
@@ -46,9 +72,10 @@ class StereoCamera():
             raise CornerDetectionError("Corner detection failed", e)
         return corners0, corners1
 
-    def _get_imagepoints(self, video_name: str, rows_inner: int, columns_inner: int):
+    def _get_imagepoints(self, frame_provider0, frame_provider1, rows_inner: int, columns_inner: int):
 
-        frame0, frame1 = self._get_stereo_frames(video_name, index=30)
+        frame0 = frame_provider0.get_stereo_frames()
+        frame1 = frame_provider1.get_stereo_frames()
 
         try:
             corners0, corners1 = self._detect_stereo_corners(frame0, frame1, rows_inner, columns_inner)
@@ -66,13 +93,15 @@ class StereoCamera():
         return imagepoint0, imagepoint1
 
     def stereo_calibrate(self,
-                         video_files: List[str],
+                         frame_provider0: ICameraFrameProvider,
+                         frame_provider1: ICameraFrameProvider,
                          rows_inner: int=7,
                          columns_inner: int=9,
                          edge_length: float=0.005,
                          undistort: bool=False,
                          stereocalibration_flags = cv2.CALIB_FIX_PRINCIPAL_POINT):
-        assert isinstance(video_files, list), "video_files should be of type list"
+        assert isinstance(frame_provider0, ICameraFrameProvider), "frame_provider0 should be of type ICameraFrameProvider"
+        assert isinstance(frame_provider1, ICameraFrameProvider), "frame_provider1 should be of type ICameraFrameProvider"
         assert isinstance(rows_inner, int), "rows should be of type int"
         assert isinstance(columns_inner, int), "columns should be of type int"
         assert isinstance(edge_length, float), "edge_length should be of type float"
@@ -83,12 +112,13 @@ class StereoCamera():
         objpoints = [] # World Coordinates
         objpoint_one_image = generate_objectpoints(rows_inner=rows_inner, columns_inner=columns_inner, edge_length=edge_length)
 
-        for video_name in video_files:
+        while not frame_provider0.end_of_frames() and not frame_provider1.end_of_frames():
             try:
-                imagepoint0, imagepoint1 = self._get_imagepoints(video_name, rows_inner, columns_inner)
+                imagepoint0, imagepoint1 = self._get_imagepoints(frame_provider0, frame_provider1, rows_inner, columns_inner)
             except ImagePointsExtractionError as e:
                 print("Image point extraction failed")
                 continue
+
             imgpoints0.append(imagepoint0)
             imgpoints1.append(imagepoint1)
             objpoints.append(objpoint_one_image)
@@ -118,6 +148,6 @@ class StereoCamera():
         print(f'Translation Matrix: {T}')
         print(f'Rotation Matrix: {R}')
 
-        self.
-
-        return
+        self.save_stereo_calibration_error(stereo_calibration_error)
+        self.save_translation_matrix(T)
+        self.save_rotation_matrix(R)

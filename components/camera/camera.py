@@ -38,9 +38,17 @@ class ICalibrationDataManager(ABC):
         pass
 
 
-class IFrameProvider(ABC):
+class ICameraFrameProvider(ABC):
     @abstractmethod
-    def get_frame(self, camera_name: str, video_path: str, i: int) -> np.ndarray:
+    def get_frame(self) -> np.ndarray:
+        pass
+
+    @abstractmethod
+    def end_of_frames(self) -> bool:
+        pass
+
+    @abstractmethod
+    def reset(self):
         pass
 
 
@@ -51,14 +59,10 @@ class ICornerDetector(ABC):
 
 
 class Camera():
-    def __init__(self, name: str, calibration_manager: ICalibrationDataManager, frame_provider: IFrameProvider, corner_detector: ICornerDetector):
+    def __init__(self, name: str, calibration_manager: ICalibrationDataManager):
         assert isinstance(name, str), f"name must be str, is {type(name)}"
         assert isinstance(calibration_manager, ICalibrationDataManager), f"calibration_manager must be {ICalibrationDataManager}, is {type(calibration_manager)}"
-        assert isinstance(frame_provider, IFrameProvider), f"frame_provide must be IFrameProvider, is {type(frame_provider)}"
         self.name = name
-        self.calibration_manager = calibration_manager
-        self.frame_provider = frame_provider
-        self.corner_detector = corner_detector
 
     def get_camera_matrix(self):
         try:
@@ -81,21 +85,16 @@ class Camera():
             raise NotCalibratedError(f"Camera {self.name} not jet calibrated", e)
         return distortion_matrix
 
-    def get_frame(self, video_path: str, index: int) -> np.ndarray:
-        try:
-            frame = self.frame_provider.get_frame(camera_name=self.name, video_path=video_path, i=index)
-        except IndexError as error:
-            raise IndexError ("Error while loading video_frames", error)
-        return frame
-
     def calibrate(self,
-                    videos: List[str],
+                    frame_provider: ICameraFrameProvider,
+                    corner_detector: ICornerDetector,
                     rows_inner: int=7,
                     columns_inner: int=9,
                     edge_length: float=0.005,
                     image_scaling: Union[float, int]=2,
                     ):
-        assert isinstance(videos, list), "videos should be of type list"
+        assert isinstance(frame_provider, ICameraFrameProvider), f"frame_provide must be IFrameProvider, is {type(frame_provider)}"
+        assert isinstance(corner_detector, ICornerDetector), f"corner_detector must be instance of ICornerDetector, is {type(corner_detector)}"
         assert isinstance(rows_inner, int), "rows should be of type int"
         assert isinstance(columns_inner, int), "columns should be of type int"
         assert isinstance(edge_length, float), "edge_length should be of type float"
@@ -106,18 +105,16 @@ class Camera():
 
         objpoint_one_image = generate_objectpoints(rows_inner=rows_inner, columns_inner=columns_inner, edge_length=edge_length)
 
-        for video in videos:
+        while not frame_provider.end_of_frames():
             try:
-                index = 30
-                video_frame = self.get_frame(video_path=video, index=index)
+                video_frame = frame_provider.get_frame()
             except IndexError as error:
                 raise IndexError ("Error while loading video_frames", error)
 
             try:
-                corners = self.corner_detector.detect_corners(image=video_frame, rows_inner=rows_inner, columns_inner=columns_inner)
+                corners = corner_detector.detect_corners(image=video_frame, rows_inner=rows_inner, columns_inner=columns_inner)
             except CornerDetectionError as e:
                 continue
-
 
             imgpoints.append(corners)
             objpoints.append(objpoint_one_image) # because corners were created by a set of similar images
