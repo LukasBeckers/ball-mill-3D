@@ -10,4 +10,5 @@ def ensure_directory_exists(func):
         if not isdir(directory_path):
             makedirs(directory_path)
         return func(self, name, *args, **kwargs)
+
     return wrapper

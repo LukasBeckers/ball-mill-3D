@@ -38,24 +38,40 @@ class chessboardValidator(stereoCamera):
         self.rows_cols.append([rows, columns])
 
     def _detect_corners(self, frame0, frame1, rows, columns, image_scaling=2):
-        corners0 = corner_detection(image_set=np.array([frame0]), image_scaling=image_scaling, cam=0, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
+        corners0 = corner_detection(
+            image_set=np.array([frame0]),
+            image_scaling=image_scaling,
+            cam=0,
+            rows_inner=rows - 1,
+            columns_inner=columns - 1,
+            fallback_manual=True,
+        )
         if corners0 is None:
             self.corners0.append(None)
             self.corners1.append(None)
             return
-        corners1 = corner_detection(image_set=np.array([frame1]), image_scaling=image_scaling, cam=1, rows_inner=rows - 1, columns_inner = columns - 1, fallback_manual=True)
+        corners1 = corner_detection(
+            image_set=np.array([frame1]),
+            image_scaling=image_scaling,
+            cam=1,
+            rows_inner=rows - 1,
+            columns_inner=columns - 1,
+            fallback_manual=True,
+        )
         if corners1 is None:
             self.corners0.append(None)
             self.corners1.append(None)
             return
         else:
-            ret, corners0, corners1 = show_and_switch(img0=frame0,
-                                      img1=frame1,
-                                      corners0=corners0[0],
-                                      corners1=corners1[0],
-                                      rows_inner=rows - 1,
-                                      columns_inner=columns - 1,
-                                      image_scaling=image_scaling)
+            ret, corners0, corners1 = show_and_switch(
+                img0=frame0,
+                img1=frame1,
+                corners0=corners0[0],
+                corners1=corners1[0],
+                rows_inner=rows - 1,
+                columns_inner=columns - 1,
+                image_scaling=image_scaling,
+            )
 
             if ret:
                 self.corners0.append(corners0)
@@ -103,7 +119,7 @@ class chessboardValidator(stereoCamera):
             col_dist = []
             for lower_index in range(0, len(frame_points), rows_inner):
                 upper_index = lower_index + rows_inner
-                col_points = frame_points[lower_index: upper_index]
+                col_points = frame_points[lower_index:upper_index]
                 for point0, point1 in zip(col_points[:-1], col_points[1:]):
                     col_dist.append(np.linalg.norm(point1 - point0))
             self.column_distances.append(col_dist)
@@ -119,21 +135,28 @@ class chessboardValidator(stereoCamera):
             # Calculate "width" distances
             width_dist = []
             for start_row in range(rows_inner):
-                width_dist.append(np.linalg.norm(frame_points[start_row] - frame_points[start_row + (rows_inner * (columns_inner-1))]))
+                width_dist.append(
+                    np.linalg.norm(
+                        frame_points[start_row]
+                        - frame_points[start_row + (rows_inner * (columns_inner - 1))]
+                    )
+                )
             self.width_distances.append(width_dist)
 
             # Calculate "height" distances
             height_dist = []
             for lower_index in range(0, len(frame_points), rows_inner):
                 upper_index = lower_index + rows_inner
-                col_points = frame_points[lower_index: upper_index]
+                col_points = frame_points[lower_index:upper_index]
                 height_dist.append(np.linalg.norm(col_points[-1] - col_points[0]))
             self.height_distances.append(height_dist)
 
             # Calculate diagonal distances
             diag_dist = []
             diag_dist.append(np.linalg.norm(frame_points[-1] - frame_points[0]))
-            diag_dist.append(np.linalg.norm(frame_points[rows_inner - 1] - frame_points[-rows_inner]))
+            diag_dist.append(
+                np.linalg.norm(frame_points[rows_inner - 1] - frame_points[-rows_inner])
+            )
             self.diagonal_distances.append(diag_dist)
 
     def _visualize(self):
@@ -145,13 +168,19 @@ class chessboardValidator(stereoCamera):
 
             coords = np.array(frame_points)
 
-            connections = [[a, b] for a, b in zip(range(len(coords)-1), range(1, len(coords)))]
+            connections = [
+                [a, b] for a, b in zip(range(len(coords) - 1), range(1, len(coords)))
+            ]
 
             x_range = [coords[:, 0].min(), coords[:, 0].max()]
             y_range = [coords[:, 1].min(), coords[:, 1].max()]
             z_range = [coords[:, 2].min(), coords[:, 2].max()]
 
-            max_range = max(x_range[1] - x_range[0], y_range[1] - y_range[0], z_range[1] - z_range[0])
+            max_range = max(
+                x_range[1] - x_range[0],
+                y_range[1] - y_range[0],
+                z_range[1] - z_range[0],
+            )
 
             x_mid = sum(x_range) / 2
             y_mid = sum(y_range) / 2
@@ -162,36 +191,40 @@ class chessboardValidator(stereoCamera):
             z_range = [z_mid - max_range / 2, z_mid + max_range / 2]
 
             for conn in connections:
-                fig.add_trace(go.Scatter3d(
-                    x=[coords[conn[0], 0], coords[conn[1], 0]],
-                    y=[coords[conn[0], 1], coords[conn[1], 1]],
-                    z=[coords[conn[0], 2], coords[conn[1], 2]],
-                    mode='lines',
-                    line=dict(color='blue', width=2),
-                    name='Line'
-                ))
+                fig.add_trace(
+                    go.Scatter3d(
+                        x=[coords[conn[0], 0], coords[conn[1], 0]],
+                        y=[coords[conn[0], 1], coords[conn[1], 1]],
+                        z=[coords[conn[0], 2], coords[conn[1], 2]],
+                        mode="lines",
+                        line=dict(color="blue", width=2),
+                        name="Line",
+                    )
+                )
 
-            fig.add_trace(go.Scatter3d(
-            x=coords[:, 0],
-            y=coords[:, 1],
-            z=coords[:, 2],
-            mode='markers',
-            marker=dict(size=1, color='red'),
-            name='Points'
-            ))
+            fig.add_trace(
+                go.Scatter3d(
+                    x=coords[:, 0],
+                    y=coords[:, 1],
+                    z=coords[:, 2],
+                    mode="markers",
+                    marker=dict(size=1, color="red"),
+                    name="Points",
+                )
+            )
 
             fig.update_layout(
-            title="3D Line Plot",
-            scene=dict(
-                xaxis_title='X Coordinate',
-                yaxis_title='Y Coordinate',
-                zaxis_title='Z Coordinate',
-                xaxis=dict(range=x_range, autorange=False),
-                yaxis=dict(range=y_range, autorange=False),
-                zaxis=dict(range=z_range, autorange=False),
-                aspectmode='manual',
-                aspectratio=dict(x=1, y=1, z=1)
-            )
+                title="3D Line Plot",
+                scene=dict(
+                    xaxis_title="X Coordinate",
+                    yaxis_title="Y Coordinate",
+                    zaxis_title="Z Coordinate",
+                    xaxis=dict(range=x_range, autorange=False),
+                    yaxis=dict(range=y_range, autorange=False),
+                    zaxis=dict(range=z_range, autorange=False),
+                    aspectmode="manual",
+                    aspectratio=dict(x=1, y=1, z=1),
+                ),
             )
 
         fig.show()
@@ -211,9 +244,17 @@ class chessboardValidator(stereoCamera):
                 self.add_calibration_frame(frame, rows, columns)
 
         n_points = len(self.points)
-        if n_points < len(self.rows_cols): # Checking if some frames are not labeled yet.
-            for frame0, frame1, (rows, columns) in zip(self.frames0[n_points:], self.frames1[n_points:], self.rows_cols[n_points:]):
-                self._detect_corners(frame0, frame1, rows, columns, image_scaling=image_scaling)
+        if n_points < len(
+            self.rows_cols
+        ):  # Checking if some frames are not labeled yet.
+            for frame0, frame1, (rows, columns) in zip(
+                self.frames0[n_points:],
+                self.frames1[n_points:],
+                self.rows_cols[n_points:],
+            ):
+                self._detect_corners(
+                    frame0, frame1, rows, columns, image_scaling=image_scaling
+                )
 
         self._triangulate()
 
@@ -249,11 +290,21 @@ class chessboardValidator(stereoCamera):
             std_diag = np.std(diagonal_distances)
 
             print(f"Frame {i}:")
-            print(f"  Average Column Distance: {avg_col*100:.4f} cm (std: {std_col*100:.4f})")
-            print(f"  Average Row Distance: {avg_row*100:.4f} cm (std: {std_row*100:.4f})")
-            print(f"  Average Width Distance: {avg_width*100:.4f} cm (std: {std_width*100:.4f})")
-            print(f"  Average Height Distance: {avg_height*100:.4f} cm (std: {std_height*100:.4f})")
-            print(f"  Average Diagonal Distance: {avg_diag*100:.4f} cm (std: {std_diag*100:.4f})\n")
+            print(
+                f"  Average Column Distance: {avg_col*100:.4f} cm (std: {std_col*100:.4f})"
+            )
+            print(
+                f"  Average Row Distance: {avg_row*100:.4f} cm (std: {std_row*100:.4f})"
+            )
+            print(
+                f"  Average Width Distance: {avg_width*100:.4f} cm (std: {std_width*100:.4f})"
+            )
+            print(
+                f"  Average Height Distance: {avg_height*100:.4f} cm (std: {std_height*100:.4f})"
+            )
+            print(
+                f"  Average Diagonal Distance: {avg_diag*100:.4f} cm (std: {std_diag*100:.4f})\n"
+            )
 
         # Visualize results
         self._visualize()
@@ -265,48 +316,72 @@ class stickerValidator(videoLoader, stereoCamera):
     Measure these distances in the real object and compare to validate the stereo-vision results.
     """
 
-    def __init__(self,
-                stereo_config_name:str,
-                model_name:str,
-                n_stickers:int,
-                max_dist_sticker:int=10,
-                max_dist_ball:int=40,
-                warmup_steps_ball:int=10):
+    def __init__(
+        self,
+        stereo_config_name: str,
+        model_name: str,
+        n_stickers: int,
+        max_dist_sticker: int = 10,
+        max_dist_ball: int = 40,
+        warmup_steps_ball: int = 10,
+    ):
 
         videoLoader.__init__(self)
         stereoCamera.__init__(self, name="stickerValidatorStereoCamera")
 
-        self.detector0 = Detector(model_name=model_name, n_stickers=n_stickers, max_dist_sticker=max_dist_sticker,
-            max_dist_ball=max_dist_ball, warmup_steps_ball=warmup_steps_ball)
-        self.detector1 = Detector(model_name=model_name, n_stickers=n_stickers, max_dist_sticker=max_dist_sticker,
-            max_dist_ball=max_dist_ball, warmup_steps_ball=warmup_steps_ball)
+        self.detector0 = Detector(
+            model_name=model_name,
+            n_stickers=n_stickers,
+            max_dist_sticker=max_dist_sticker,
+            max_dist_ball=max_dist_ball,
+            warmup_steps_ball=warmup_steps_ball,
+        )
+        self.detector1 = Detector(
+            model_name=model_name,
+            n_stickers=n_stickers,
+            max_dist_sticker=max_dist_sticker,
+            max_dist_ball=max_dist_ball,
+            warmup_steps_ball=warmup_steps_ball,
+        )
 
         self.load_from_yaml(stereo_config_name)
         self.n_stickers = n_stickers
 
-    def validate_on(self, video_path:str):
+    def validate_on(self, video_path: str):
         self.load_video(video_path=video_path)
         self._load_frames()
         self.acc_sticker_coords0 = {i: [] for i in range(self.n_stickers)}
         self.acc_sticker_coords1 = {i: [] for i in range(self.n_stickers)}
         for frame in self.frames[30:-30]:
             frame0, frame1 = self(frame)
-            detection_results0 = self.detector0(frame0, mirror=True, return_yolo_output=True)
-            detection_results1 = self.detector1(frame1, mirror=False, return_yolo_output=True)
+            detection_results0 = self.detector0(
+                frame0, mirror=True, return_yolo_output=True
+            )
+            detection_results1 = self.detector1(
+                frame1, mirror=False, return_yolo_output=True
+            )
 
             if detection_results0[1] is not None and detection_results1[1] is not None:
-                frame0 = draw_detections(img=frame0, detection_results=detection_results0[2], stickercoords=detection_results0[1])
-                frame1 = draw_detections(img=frame1, detection_results=detection_results1[2], stickercoords=detection_results1[1])
+                frame0 = draw_detections(
+                    img=frame0,
+                    detection_results=detection_results0[2],
+                    stickercoords=detection_results0[1],
+                )
+                frame1 = draw_detections(
+                    img=frame1,
+                    detection_results=detection_results1[2],
+                    stickercoords=detection_results1[1],
+                )
 
                 cv2.imshow("Detection Results 0", frame0)
                 cv2.imshow("Detection Results 1", frame1)
                 cv2.waitKey(1)
 
                 for key, coords in detection_results0[1].items():
-                                self.acc_sticker_coords0[key].append(coords)
+                    self.acc_sticker_coords0[key].append(coords)
 
                 for key, coords in detection_results1[1].items():
-                                self.acc_sticker_coords1[key].append(coords)
+                    self.acc_sticker_coords1[key].append(coords)
 
         cv2.destroyAllWindows()
         self._triangulate()
@@ -322,14 +397,20 @@ class stickerValidator(videoLoader, stereoCamera):
             coords0 = self.acc_sticker_coords0[i]
             coords1 = self.acc_sticker_coords1[i]
 
-            points3d = [triangulate(self, coord0, coord1) for coord0, coord1 in zip(coords0, coords1)]
+            points3d = [
+                triangulate(self, coord0, coord1)
+                for coord0, coord1 in zip(coords0, coords1)
+            ]
             self.sticker3dpoints[i] = points3d
 
     def _calculate_average_distances(self):
         self.avg_distances = np.zeros((self.n_stickers, self.n_stickers))
 
-        for (i, j) in combinations(range(self.n_stickers), 2):
-            distances = [np.linalg.norm(p1 - p2) for p1, p2 in zip(self.sticker3dpoints[i], self.sticker3dpoints[j])]
+        for i, j in combinations(range(self.n_stickers), 2):
+            distances = [
+                np.linalg.norm(p1 - p2)
+                for p1, p2 in zip(self.sticker3dpoints[i], self.sticker3dpoints[j])
+            ]
             average_distance = np.mean(distances)
             self.avg_distances[i, j] = self.avg_distances[j, i] = average_distance
 
@@ -337,19 +418,33 @@ class stickerValidator(videoLoader, stereoCamera):
         print("Average Distance Matrix (in cm):")
         print("    " + "  ".join([f"Sticker {i}" for i in range(self.n_stickers)]))
         for i in range(self.n_stickers):
-            row = [f"{self.avg_distances[i, j] * 100:.2f}" for j in range(self.n_stickers)]
+            row = [
+                f"{self.avg_distances[i, j] * 100:.2f}" for j in range(self.n_stickers)
+            ]
             print(f"Sticker {i}  " + "  ".join(row))
 
     def visualize_example_detection(self):
         i = 30
         while self.frames is not None:
             frame0, frame1 = self(self.frames[i])  # Example frame
-            detection_results0 = self.detector0(frame0, mirror=True, return_yolo_output=True)
-            detection_results1 = self.detector1(frame1, mirror=False, return_yolo_output=True)
+            detection_results0 = self.detector0(
+                frame0, mirror=True, return_yolo_output=True
+            )
+            detection_results1 = self.detector1(
+                frame1, mirror=False, return_yolo_output=True
+            )
 
             if detection_results0[1] is not None and detection_results1[1] is not None:
-                frame0 = draw_detections(img=frame0, detection_results=detection_results0[2], stickercoords=detection_results0[1])
-                frame1 = draw_detections(img=frame1, detection_results=detection_results1[2], stickercoords=detection_results1[1])
+                frame0 = draw_detections(
+                    img=frame0,
+                    detection_results=detection_results0[2],
+                    stickercoords=detection_results0[1],
+                )
+                frame1 = draw_detections(
+                    img=frame1,
+                    detection_results=detection_results1[2],
+                    stickercoords=detection_results1[1],
+                )
 
                 cv2.imshow("Example Detection 0", frame0)
                 cv2.imshow("Example Detection 1", frame1)
@@ -390,8 +485,12 @@ class manualValidator(videoLoader, stereoCamera):
 
         self._display_frames(frame_idx)
 
-        if (self.point0_frame0 is not None and self.point0_frame1 is not None and
-            self.point1_frame0 is not None and self.point1_frame1 is not None):
+        if (
+            self.point0_frame0 is not None
+            and self.point0_frame1 is not None
+            and self.point1_frame0 is not None
+            and self.point1_frame1 is not None
+        ):
             self._triangulate_and_display_distance()
 
         cv2.destroyAllWindows()

@@ -2,7 +2,9 @@ from typing import Union
 import numpy as np
 
 
-def generate_objectpoints(rows_inner: int, columns_inner: int, edge_length: Union[int, float]) -> np.ndarray:
+def generate_objectpoints(
+    rows_inner: int, columns_inner: int, edge_length: Union[int, float]
+) -> np.ndarray:
     # prepare object points, lower left corner of chessboard will be world coordinate (0, 0, 0)
     assert isinstance(rows_inner, int)
     assert isinstance(columns_inner, int)
@@ -17,7 +19,9 @@ def generate_objectpoints(rows_inner: int, columns_inner: int, edge_length: Unio
 
 class CornerDetectionError(Exception):
     def __init__(self, message, error_code):
-        super().__init__(message)  # Initialize the base Exception class with the message
+        super().__init__(
+            message
+        )  # Initialize the base Exception class with the message
         self.error_code = error_code  # Additional attribute for the custom error code
 
     def __str__(self):
@@ -26,7 +30,9 @@ class CornerDetectionError(Exception):
 
 class CalibrationError(Exception):
     def __init__(self, message, error_code):
-        super().__init__(message)  # Initialize the base Exception class with the message
+        super().__init__(
+            message
+        )  # Initialize the base Exception class with the message
         self.error_code = error_code  # Additional attribute for the custom error code
 
     def __str__(self):

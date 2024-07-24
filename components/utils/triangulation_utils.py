@@ -4,7 +4,9 @@ import cv2
 
 def triangulate(SC, point1, point2):
     RT1 = np.concatenate([np.eye(3), [[0], [0], [0]]], axis=-1)
-    RT2 = np.concatenate([SC.conf["rotation_matrix"][0], SC.conf["translation_matrix"][0]], axis=-1)
+    RT2 = np.concatenate(
+        [SC.conf["rotation_matrix"][0], SC.conf["translation_matrix"][0]], axis=-1
+    )
 
     P1 = SC.conf["camera_matrix"][0] @ RT1
     P2 = SC.conf["camera_matrix"][1] @ RT2
@@ -13,8 +15,8 @@ def triangulate(SC, point1, point2):
     cm1 = np.array(SC.conf["camera_matrix"][1])
     dist0 = np.array(SC.conf["distortion"][0])
     dist1 = np.array(SC.conf["distortion"][0])
- 
-    point1 = cv2.undistortPoints(point1, cm0, dist0 , None, cm0)[0][0]
+
+    point1 = cv2.undistortPoints(point1, cm0, dist0, None, cm0)[0][0]
     point2 = cv2.undistortPoints(point2, cm1, dist1, None, cm1)[0][0]
 
     coordinate = cv2.triangulatePoints(P1, P2, point1, point2)
@@ -59,6 +61,7 @@ def compute_transform_matrix(points_A, points_B):
     transform_matrix[:3, 3] = translation_vector.flatten()
     return transform_matrix
 
+
 def transform_point(point, transform_matrix):
     """Transforms a point to a nother coordinate system (3d) based on a transform_matrix"""
     # point needs one extra dimension
@@ -69,5 +72,3 @@ def transform_point(point, transform_matrix):
     # Extract the transformed point in system B
     new_point = new_point_homogeneous[:3, :].T
     return new_point[0]
-
-

@@ -4,17 +4,19 @@ import numpy as np
 from typing import List, Union
 
 
-logging.basicConfig(level=logging.DEBUG,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 logger = logging.getLogger(__name__)
 
 
-class videoLoader():
+class videoLoader:
     """
     Loads a video and stores the frames using "load_video" method.
     Frames can be accessed by indexing the instance of this class.
     """
+
     def __init__(self):
         self.cap = None
         self.index = 0
@@ -25,8 +27,8 @@ class videoLoader():
 
         frames = []
         i = 0
-        while (self.cap.isOpened()):
-            i +=  1
+        while self.cap.isOpened():
+            i += 1
             ret, frame = self.cap.read()
             if ret:
                 frames.append(frame)
@@ -51,12 +53,14 @@ class videoLoader():
         self.totalFrames = len(self.frames)
 
     def __getitem__(self, index: Union[int, slice]) -> np.ndarray:
-        assert isinstance(index, (int, slice)), f"index must be of type int or slice, is {type(index)}"
+        assert isinstance(
+            index, (int, slice)
+        ), f"index must be of type int or slice, is {type(index)}"
         return self.frames[index]
 
     def __len__(self) -> int:
         return self.totalFrames
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     pass
