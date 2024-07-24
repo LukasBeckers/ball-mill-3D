@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Union, List, Tuple
 import cv2
 import numpy as np
-from camera.camera import Camera, ICameraFrameProvider
+from camera.camera import Camera, ICameraFrameProvider, ICornerDetector
 from camera.camera_utils import (
     CornerDetectionError,
     generate_objectpoints,
@@ -57,12 +57,14 @@ class StereoCamera:
         camera1: Camera,
         corner_order_manager: IStereoCornerOrderManager,
         stereo_calibration_manager: IStereoCalibrationDataManager,
+        corner_detector: ICornerDetector,
     ):
         self.name = name
         self.camera0 = camera0
         self.camera1 = camera1
         self.corner_order_manger = corner_order_manager
         self.stereo_calibration_manager = stereo_calibration_manager
+        self.corner_detector = corner_detector
 
     def get_translation_matrix(self) -> np.ndarray:
         return self.stereo_calibration_manager.get_translation_matrix(self.name)
@@ -91,14 +93,14 @@ class StereoCamera:
         columns_inner: int,
     ) -> Tuple[np.ndarray, np.ndarray]:
         try:
-            corners0 = self.camera0.corner_detector.detect_corners(
+            corners0 = self.corner_detector.detect_corners(
                 image=frame0, rows_inner=rows_inner, columns_inner=columns_inner
             )
         except CornerDetectionError as e:
             raise CornerDetectionError("Corner detection failed", e)
 
         try:
-            corners1 = self.camera1.corner_detector.detect_corners(
+            corners1 = self.corner_detector.detect_corners(
                 image=frame1, rows_inner=rows_inner, columns_inner=columns_inner
             )
         except CornerDetectionError as e:
@@ -201,7 +203,8 @@ class StereoCamera:
             self.camera0.get_optimized_camera_matrix(),
             self.camera0.get_distortion_matrix(),
             self.camera1.get_optimized_camera_matrix(),
-            self.camera1.get_distortion_matrix()(width, height),
+            self.camera1.get_distortion_matrix(),
+            (width, height),
             criteria=criteria,
             flags=stereocalibration_flags,
         )
