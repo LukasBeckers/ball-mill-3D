@@ -27,6 +27,10 @@ class ICalibrationDataManager(ABC):
         pass
 
     @abstractmethod
+    def get_camera_resolution(self, name: str) -> np.ndarray:
+        pass
+
+    @abstractmethod
     def save_camera_matrix(self, name: str, camera_matrix: np.ndarray):
         pass
 
@@ -44,6 +48,9 @@ class ICalibrationDataManager(ABC):
     ):
         pass
 
+    @abstractmethod
+    def save_camera_resolution(self, name: str, camera_resolution: np.ndarray):
+        pass
 
 class ICameraFrameProvider(ABC):
     @abstractmethod

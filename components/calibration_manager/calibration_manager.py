@@ -14,6 +14,7 @@ class CalibrationDataManager(ICalibrationDataManager):
         self.camera_matrix = None
         self.optimized_camera_matrix = None
         self.distortion_matrix = None
+        self.camera_resolution = None
 
         if not isdir(storage_dir):
             makedirs(storage_dir)
@@ -62,6 +63,19 @@ class CalibrationDataManager(ICalibrationDataManager):
             return distortion_matrix
 
     @ensure_directory_exists
+    def get_camera_resolution(self, name: str) -> np.ndarray:
+        if self.camera_resolution is not None:
+            return self.camera_resolution
+
+        if not isfile(join(self.storage_dir, name, "_camera_resolution.txt")):
+            raise NotCalibratedError("No saved camera_resolution found", NotCalibratedError)
+        else:
+            camera_resolution = np.loadtxt(
+                join(self.storage_dir, name, "_camera_resolution.txt")
+            )
+            return camera_resolution
+
+    @ensure_directory_exists
     def save_camera_matrix(self, name: str, camera_matrix: np.ndarray):
         self.camera_matrix = camera_matrix
         np.savetxt(join(self.storage_dir, name, "_camera_matrix.txt"), camera_matrix)
@@ -82,3 +96,11 @@ class CalibrationDataManager(ICalibrationDataManager):
         np.savetxt(
             join(self.storage_dir, name, "_distortion_matrix.txt"), distortion_matrix
         )
+
+    @ensure_directory_exists
+    def save_camera_resolution(self, name: str, camera_resolution: np.ndarray):
+        self.camera_resolution = camera_resolution
+        np.savetxt(join(self.storage_dir, name, "_camera_resolution.txt"), camera_resolution)
+
+    def save_calibration_error(self, name: str, calibration_error: np.ndarray):
+        np.savetxt(join(self.storage_dir, name, "_calibration_error.txt"), calibration_error)
