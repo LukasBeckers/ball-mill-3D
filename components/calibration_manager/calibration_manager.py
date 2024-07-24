@@ -25,7 +25,7 @@ class CalibrationDataManager(ICalibrationDataManager):
             return self.camera_matrix
 
         if not isfile(join(self.storage_dir, name, "_camera_matrix.txt")):
-            raise NotCalibratedError("No saved camera-matrix found", NotCalibratedError)
+            raise FileNotFoundError("No saved camera-matrix found", FileNotFoundError)
         else:
             camera_matrix = np.loadtxt(
                 join(self.storage_dir, name, "_camera_matrix.txt")
@@ -38,8 +38,8 @@ class CalibrationDataManager(ICalibrationDataManager):
             return self.optimized_camera_matrix
 
         if not isfile(join(self.storage_dir, name, "_optimized_camera_matrix.txt")):
-            raise NotCalibratedError(
-                "No saved optimized_camera-matrix found", NotCalibratedError
+            raise FileNotFoundError(
+                "No saved optimized_camera-matrix found", FileNotFoundError
             )
         else:
             optimized_camera_matrix = np.loadtxt(
@@ -53,8 +53,8 @@ class CalibrationDataManager(ICalibrationDataManager):
             return self.distortion_matrix
 
         if not isfile(join(self.storage_dir, name, "_distortion_matrix.txt")):
-            raise NotCalibratedError(
-                "No saved distortion-matrix found", NotCalibratedError
+            raise FileNotFoundError(
+                "No saved distortion-matrix found", FileNotFoundError
             )
         else:
             distortion_matrix = np.loadtxt(
@@ -68,7 +68,7 @@ class CalibrationDataManager(ICalibrationDataManager):
             return self.camera_resolution
 
         if not isfile(join(self.storage_dir, name, "_camera_resolution.txt")):
-            raise NotCalibratedError("No saved camera_resolution found", NotCalibratedError)
+            raise FileNotFoundError("No saved camera_resolution found", FileNotFoundError)
         else:
             camera_resolution = np.loadtxt(
                 join(self.storage_dir, name, "_camera_resolution.txt")

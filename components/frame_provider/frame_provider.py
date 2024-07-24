@@ -26,8 +26,8 @@ class IFrameProviderGUI(ABC):
 
 
 class CameraFrameProvider(ICameraFrameProvider):
-    def __init__(self, camera_name: str, frame_provider_calibration_data_manager: IFrameProviderCalibrationDataManager, gui_interface: IFrameProviderGUI):
-        self.name = camera_name
+    def __init__(self, camera: Camera, frame_provider_calibration_data_manager: IFrameProviderCalibrationDataManager, gui_interface: IFrameProviderGUI):
+        self.camera = camera 
         self._i = 0
         self._frames = []
         self.calib_data_manager = frame_provider_calibration_data_manager
@@ -61,7 +61,32 @@ class CameraFrameProvider(ICameraFrameProvider):
             raise NotCalibratedError("Anchor point not set", error)
 
 
+    # Camera0
+        anchor_point0 = np.array(self.conf["anchor_point"][0])
+        start_point0 = anchor_point0 - np.array(self.conf["camera_size"][0]) / 2
+        end_point0 = anchor_point0 + np.array(self.conf["camera_size"][0]) / 2
 
+        # Camera 1
+        anchor_point1 = np.array(self.conf["anchor_point"][1])
+        start_point1 = anchor_point1 - np.array(self.conf["camera_size"][0]) / 2
+        end_point1 = anchor_point1 + np.array(self.conf["camera_size"][0]) / 2
+
+        # checking for negative values and adjusting the anchor size
+        for i, val in enumerate(start_point0):
+            if val < 0:
+                self.conf["anchor_point"][0] -= val
+                return self(image)
+
+        for i, val in enumerate(start_point1):
+            if val < 0:
+                self.conf["anchor_point"][1] -= val
+                return self(image)
+
+        frame0 = image[int(start_point0[1]): int(end_point0[1]), int(start_point0[0]): int(end_point0[0])]
+        frame1 = image[int(start_point1[1]): int(end_point1[1]), int(start_point1[0]): int(end_point1[0])]
+
+        # frame0 should be mirror frame
+        frame0 = np.fliplr(frame0)
     def end_of_frames(self) -> bool:
         if self._i >= len(self._frames):
             return True

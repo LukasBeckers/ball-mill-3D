@@ -83,14 +83,14 @@ class Camera:
         self.name = name
         self.calibration_manager = calibration_manager
 
-    def get_camera_matrix(self):
+    def get_camera_matrix(self) -> np.ndarray:
         try:
             camera_matrix = self.calibration_manager.get_camera_matrix(self.name)
         except NotCalibratedError as e:
             raise NotCalibratedError(f"Camera {self.name} not jet calibrated", e)
         return camera_matrix
 
-    def get_optimized_camera_matrix(self):
+    def get_optimized_camera_matrix(self) -> np.ndarray:
         try:
             optimized_camera_matrix = (
                 self.calibration_manager.get_optimized_camera_matrix(self.name)
@@ -99,7 +99,7 @@ class Camera:
             raise NotCalibratedError(f"Camera {self.name} not jet calibrated", e)
         return optimized_camera_matrix
 
-    def get_distortion_matrix(self):
+    def get_distortion_matrix(self) -> np.ndarray:
         try:
             distortion_matrix = self.calibration_manager.get_distortion_matrix(
                 self.name
@@ -107,6 +107,15 @@ class Camera:
         except NotCalibratedError as e:
             raise NotCalibratedError(f"Camera {self.name} not jet calibrated", e)
         return distortion_matrix
+
+    def get_camera_resolution(self) -> np.ndarray:
+        try:
+            camera_resolution = self.calibration_manager.get_camera_resolution(
+                self.name
+            )
+        except NotCalibratedError as e:
+            raise NotCalibratedError(f"Camera {self.name} resolution not jet set", e)
+        return camera_resolution
 
     def calibrate(
         self,
