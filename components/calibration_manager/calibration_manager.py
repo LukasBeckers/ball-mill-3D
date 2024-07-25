@@ -102,5 +102,6 @@ class CalibrationDataManager(ICalibrationDataManager):
         self.camera_resolution = camera_resolution
         np.savetxt(join(self.storage_dir, name, "_camera_resolution.txt"), camera_resolution)
 
+    @ensure_directory_exists
     def save_calibration_error(self, name: str, calibration_error: np.ndarray):
         np.savetxt(join(self.storage_dir, name, "_calibration_error.txt"), calibration_error)

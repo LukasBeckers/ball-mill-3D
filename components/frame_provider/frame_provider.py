@@ -11,7 +11,15 @@ class IFrameProviderCalibrationDataManager(ABC):
         pass
 
     @abstractmethod
+    def get_is_mirrored(self, name: str) -> bool:
+        pass
+
+    @abstractmethod
     def save_anchor_point(self, name: str, anchor_point: np.ndarray):
+        pass
+
+    @abstractmethod
+    def save_is_mirrored(self, name: str, is_mirrored: bool):
         pass
 
 
@@ -27,7 +35,8 @@ class IFrameProviderGUI(ABC):
 
 class CameraFrameProvider(ICameraFrameProvider):
     def __init__(self, camera: Camera, frame_provider_calibration_data_manager: IFrameProviderCalibrationDataManager, gui_interface: IFrameProviderGUI):
-        self.camera = camera 
+        self.camera = camera
+        self.name = camera.name
         self._i = 0
         self._frames = []
         self.calib_data_manager = frame_provider_calibration_data_manager
@@ -55,38 +64,38 @@ class CameraFrameProvider(ICameraFrameProvider):
     def get_frame(self) -> np.ndarray:
         raw_frame = self._frames[self._i]
         self._i += 1
-        try
+        try:
             anchor_point = self.calib_data_manager.get_anchor_point(self.name)
         except NotCalibratedError as error:
             raise NotCalibratedError("Anchor point not set", error)
 
+        try:
+            is_mirrored = self.calib_data_manager.get_is_mirrored(self.name)
+        except NotCalibratedError as error:
+            raise NotCalibratedError("is_mirrored is not set", error)
 
-    # Camera0
-        anchor_point0 = np.array(self.conf["anchor_point"][0])
-        start_point0 = anchor_point0 - np.array(self.conf["camera_size"][0]) / 2
-        end_point0 = anchor_point0 + np.array(self.conf["camera_size"][0]) / 2
+        try:
+           camera_resolution = self.camera.get_camera_resolution()
+        except NotCalibratedError as error:
+            raise NotCalibratedError(f"Camera {self.camera.name}, camera_resolution is not set", error)
 
-        # Camera 1
-        anchor_point1 = np.array(self.conf["anchor_point"][1])
-        start_point1 = anchor_point1 - np.array(self.conf["camera_size"][0]) / 2
-        end_point1 = anchor_point1 + np.array(self.conf["camera_size"][0]) / 2
+        start_point = anchor_point - camera_resolution / 2
+        end_point = anchor_point + camera_resolution / 2
 
         # checking for negative values and adjusting the anchor size
-        for i, val in enumerate(start_point0):
+        for i, val in enumerate(start_point):
             if val < 0:
-                self.conf["anchor_point"][0] -= val
-                return self(image)
+                self.calib_data_manager.save_anchor_point(self.name, anchor_point-val)
+                return self.get_frame()
 
-        for i, val in enumerate(start_point1):
-            if val < 0:
-                self.conf["anchor_point"][1] -= val
-                return self(image)
 
-        frame0 = image[int(start_point0[1]): int(end_point0[1]), int(start_point0[0]): int(end_point0[0])]
-        frame1 = image[int(start_point1[1]): int(end_point1[1]), int(start_point1[0]): int(end_point1[0])]
+        frame = raw_frame[int(start_point[1]): int(end_point[1]), int(start_point[0]): int(end_point[0])]
 
-        # frame0 should be mirror frame
-        frame0 = np.fliplr(frame0)
+        if is_mirrored:
+            frame = np.fliplr(frame)
+
+        return frame
+
     def end_of_frames(self) -> bool:
         if self._i >= len(self._frames):
             return True
