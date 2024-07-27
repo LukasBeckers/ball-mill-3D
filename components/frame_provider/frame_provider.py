@@ -25,22 +25,27 @@ class IFrameProviderCalibrationDataManager(ABC):
 
 class IFrameProviderGUI(ABC):
     @abstractmethod
-    def send_message(self, image: np.ndarray, messsage: str):
+    def set_anchor_point(self, image: np.ndarray) -> np.ndarray:
         pass
 
     @abstractmethod
-    def recieve_message(self) -> np.ndarray:
+    def set_is_mirrored(self, image: np.ndarray) -> bool:
         pass
 
 
 class CameraFrameProvider(ICameraFrameProvider):
-    def __init__(self, camera: Camera, frame_provider_calibration_data_manager: IFrameProviderCalibrationDataManager, gui_interface: IFrameProviderGUI):
+    def __init__(
+        self,
+        camera: Camera,
+        frame_provider_calibration_data_manager: IFrameProviderCalibrationDataManager,
+        gui: IFrameProviderGUI,
+    ):
         self.camera = camera
         self.name = camera.name
         self._i = 0
         self._frames = []
-        self.calib_data_manager = frame_provider_calibration_data_manager
-        self.gui_interface = gui_interface
+        self.calibration_data_manager = frame_provider_calibration_data_manager
+        self.gui = gui
 
     def _load_frames(self, video_dir: str):
 
@@ -61,23 +66,35 @@ class CameraFrameProvider(ICameraFrameProvider):
 
         self._frames = frames
 
+    def calibrate(self, video_dir: str):
+        self._load_frames(video_dir)
+        raw_frame = self._frames[
+            int(len(self._frames) / 2)
+        ]  # Frame from the middle of the video
+        anchor_point = self.gui.set_anchor_point(raw_frame)
+        is_mirrored = self.gui.set_is_mirrored(raw_frame)
+        self.calibration_data_manager.save_anchor_point(self.name, anchor_point)
+        self.calibration_data_manager.save_is_mirrored(self.name, is_mirrored)
+
     def get_frame(self) -> np.ndarray:
         raw_frame = self._frames[self._i]
         self._i += 1
         try:
-            anchor_point = self.calib_data_manager.get_anchor_point(self.name)
+            anchor_point = self.calibration_data_manager.get_anchor_point(self.name)
         except NotCalibratedError as error:
             raise NotCalibratedError("Anchor point not set", error)
 
         try:
-            is_mirrored = self.calib_data_manager.get_is_mirrored(self.name)
+            is_mirrored = self.calibration_data_manager.get_is_mirrored(self.name)
         except NotCalibratedError as error:
             raise NotCalibratedError("is_mirrored is not set", error)
 
         try:
-           camera_resolution = self.camera.get_camera_resolution()
+            camera_resolution = self.camera.get_camera_resolution()
         except NotCalibratedError as error:
-            raise NotCalibratedError(f"Camera {self.camera.name}, camera_resolution is not set", error)
+            raise NotCalibratedError(
+                f"Camera {self.camera.name}, camera_resolution is not set", error
+            )
 
         start_point = anchor_point - camera_resolution / 2
         end_point = anchor_point + camera_resolution / 2
@@ -85,11 +102,15 @@ class CameraFrameProvider(ICameraFrameProvider):
         # checking for negative values and adjusting the anchor size
         for i, val in enumerate(start_point):
             if val < 0:
-                self.calib_data_manager.save_anchor_point(self.name, anchor_point-val)
+                self.calibration_data_manager.save_anchor_point(
+                    self.name, anchor_point - val
+                )
                 return self.get_frame()
 
-
-        frame = raw_frame[int(start_point[1]): int(end_point[1]), int(start_point[0]): int(end_point[0])]
+        frame = raw_frame[
+            int(start_point[1]) : int(end_point[1]),
+            int(start_point[0]) : int(end_point[0]),
+        ]
 
         if is_mirrored:
             frame = np.fliplr(frame)
