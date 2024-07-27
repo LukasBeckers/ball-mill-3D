@@ -52,6 +52,7 @@ class ICalibrationDataManager(ABC):
     def save_camera_resolution(self, name: str, camera_resolution: np.ndarray):
         pass
 
+
 class ICameraFrameProvider(ABC):
     @abstractmethod
     def get_frame(self) -> np.ndarray:
@@ -138,6 +139,14 @@ class Camera:
         assert isinstance(
             image_scaling, (float, int)
         ), "image_scaling should be of type float"
+
+        try:
+            _ = self.get_camera_resolution()
+        except NotCalibratedError as error:
+            raise NotCalibratedError(
+                f"Camera {self.name} has no camera resolution jet. set it in the calibration_manager",
+                error,
+            )
 
         imgpoints = []  # Pixel coorinates in the image
         objpoints = []  # Defined coordinates in real space
