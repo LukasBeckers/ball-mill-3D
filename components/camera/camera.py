@@ -3,7 +3,6 @@ from typing import Union, Optional, Tuple, List
 import numpy as np
 import cv2
 
-from components.calibration_manager import calibration_manager
 
 from .camera_utils import (
     NotCalibratedError,
@@ -120,31 +119,27 @@ class Camera:
 
     def calibrate(
         self,
-        frame_provider: ICameraFrameProvider,
+        frame_providers: List[ICameraFrameProvider],
         corner_detector: ICornerDetector,
         rows_inner: int = 7,
         columns_inner: int = 9,
         edge_length: float = 0.005,
-        image_scaling: Union[float, int] = 2,
     ):
         assert isinstance(
-            frame_provider, ICameraFrameProvider
-        ), f"frame_provide must be IFrameProvider, is {type(frame_provider)}"
+            frame_providers[0], ICameraFrameProvider
+        ), f"frame_provide must be IFrameProvider, is {type(frame_providers)}"
         assert isinstance(
             corner_detector, ICornerDetector
         ), f"corner_detector must be instance of ICornerDetector, is {type(corner_detector)}"
         assert isinstance(rows_inner, int), "rows should be of type int"
         assert isinstance(columns_inner, int), "columns should be of type int"
         assert isinstance(edge_length, float), "edge_length should be of type float"
-        assert isinstance(
-            image_scaling, (float, int)
-        ), "image_scaling should be of type float"
 
         try:
             _ = self.get_camera_resolution()
         except NotCalibratedError as error:
             raise NotCalibratedError(
-                f"Camera {self.name} has no camera resolution jet. set it in the calibration_manager",
+                f"Camera {self.name} has no camera resolution jet. Set it in the calibration_manager.",
                 error,
             )
 
@@ -154,40 +149,42 @@ class Camera:
         objpoint_one_image = generate_objectpoints(
             rows_inner=rows_inner, columns_inner=columns_inner, edge_length=edge_length
         )
+        for frame_provider in frame_providers:
+            while not frame_provider.end_of_frames():
+                try:
+                    video_frame = frame_provider.get_frame()
+                except IndexError as error:
+                    raise IndexError("Error while loading video_frames", error)
 
-        while not frame_provider.end_of_frames():
-            try:
-                video_frame = frame_provider.get_frame()
-            except IndexError as error:
-                raise IndexError("Error while loading video_frames", error)
+                try:
+                    corners = corner_detector.detect_corners(
+                        image=video_frame,
+                        rows_inner=rows_inner,
+                        columns_inner=columns_inner,
+                    )
+                except CornerDetectionError as e:
+                    continue
 
-            try:
-                corners = corner_detector.detect_corners(
-                    image=video_frame,
-                    rows_inner=rows_inner,
-                    columns_inner=columns_inner,
+                imgpoints.append(corners)
+                objpoints.append(
+                    objpoint_one_image
                 )
-            except CornerDetectionError as e:
-                continue
-
-            imgpoints.append(corners)
-            objpoints.append(
-                objpoint_one_image
-            )  # because corners were created by a set of similar images
 
         if imgpoints == [] or objpoints == []:
             raise CalibrationError(
                 "Calibration failed because no corners were detected", CalibrationError
             )
 
-        frame_provider.reset()
-        example_frame = frame_provider.get_frame()
+        frame_providers[0].reset()
+        example_frame = frame_providers[0].get_frame()
         width = example_frame.shape[1]
         height = example_frame.shape[0]
 
+
+        print(np.array(imgpoints).shape, np.array(objpoints).shape)
         calibration_error, camera_matrix, distortion_matrix, rvecs, tvecs = (
             cv2.calibrateCamera(
-                np.array(objpoints), np.array(imgpoints), (width, height), None, None
+                np.array(objpoints, dtype=np.float32), np.array(imgpoints, dtype=np.float32), (width, height), None, None
             )
         )
 

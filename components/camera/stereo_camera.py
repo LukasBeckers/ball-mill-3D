@@ -2,10 +2,14 @@ from abc import ABC, abstractmethod
 from typing import Union, List, Tuple
 import cv2
 import numpy as np
-from camera.camera import Camera, ICameraFrameProvider, ICornerDetector
-from camera.camera_utils import (
+from .camera import (
+    Camera,
+    ICameraFrameProvider,
+    ICornerDetector,
     CornerDetectionError,
-    generate_objectpoints,
+    generate_objectpoints)
+
+from .camera_utils import (
     CornersOrdererError,
     ImagePointsExtractionError,
     StereoCalibrationError,
