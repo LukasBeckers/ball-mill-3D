@@ -9,16 +9,17 @@
 
 ```mermaid
 graph TD
-  A[camera / stereo_camera (implemented & tested)]
+  A[camera / stereo_camera (implemented &amp; tested)]
   B[calibration_manager (implemented)]
   C[camera_frame_provider (implemented)]
   D[corner_detector (not implemented)]
   E[triangulator (not implemented)]
   F[validator (not implemented)]
 
-  A <-- |dep.| B
-  A <--|dep.| C
+  B -->|dep.| A
+  C -->|dep.| A
   B -->|dep.| C
   D -->|dep.| A
+
   
   
