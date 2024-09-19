@@ -22,6 +22,11 @@ graph TD
   C -->|dep.| A
   B -->|dep.| C
   D -->|dep.| A
+  E -->|dep.| A
+  F -->|dep.| A
+  F -->|dep.| B
+  F -->|dep.| D
+  F -->|dep.| E
 
   %% Define classes for styling
   classDef implemented fill:#a8f0a8,stroke:#333,stroke-width:2px;
