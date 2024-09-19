@@ -9,8 +9,16 @@
 
 ```mermaid
 graph TD
-  A[Start] --> B{Decision}
-  B -->|Yes| C[Option 1]
-  B -->|No| D[Option 2]
-  C --> E[End]
-  D --> E
+  A[camera / stereo_camera (implemented & tested)]
+  B[calibration_manager (implemented)]
+  C[camera_frame_provider (implemented)]
+  D[corner_detector (not implemented)]
+  E[triangulator (not implemented)]
+  F[validator (not implemented)]
+
+  A <-- |dep.| B
+  A <--|dep.| C
+  B -->|dep.| C
+  D -->|dep.| A
+  
+  

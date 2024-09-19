@@ -30,3 +30,4 @@ config/*
 !config/.gitkeep
 **/__pycache__/
 **/.ipynb_checkpoints
+.dependencygraph/*

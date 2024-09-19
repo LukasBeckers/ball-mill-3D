@@ -93,7 +93,8 @@ class CameraFrameProvider(ICameraFrameProvider):
             camera_resolution = self.camera.get_camera_resolution()
         except NotCalibratedError as error:
             raise NotCalibratedError(
-                f"Camera {self.camera.name}, camera_resolution is not set", error
+                f"Camera {self.camera.name}, camera_resolution is not set",
+                error,
             )
 
         start_point = anchor_point - camera_resolution / 2

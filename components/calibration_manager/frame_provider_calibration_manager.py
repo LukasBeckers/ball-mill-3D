@@ -8,7 +8,9 @@ from calibration_manager_utils import ensure_directory_exists
 from frame_provider import IFrameProviderCalibrationDataManager
 
 
-class FrameProviderCalibrationDataManager(IFrameProviderCalibrationDataManager):
+class FrameProviderCalibrationDataManager(
+    IFrameProviderCalibrationDataManager
+):
     def __init__(self, storage_dir: str):
         self.storage_dir = storage_dir
         self.is_mirrored = None
@@ -27,7 +29,9 @@ class FrameProviderCalibrationDataManager(IFrameProviderCalibrationDataManager):
                 f"is_mirrored not found for {name}", FileNotFoundError
             )
         else:
-            is_mirrored = np.loadtxt(join(self.storage_dir, name, "_is_mirrored.txt"))
+            is_mirrored = np.loadtxt(
+                join(self.storage_dir, name, "_is_mirrored.txt")
+            )
             return bool(is_mirrored[0])
 
     @ensure_directory_exists
@@ -40,7 +44,9 @@ class FrameProviderCalibrationDataManager(IFrameProviderCalibrationDataManager):
                 f"No saved anchor_point found for {name}", FileNotFoundError
             )
         else:
-            anchor_point = np.loadtxt(join(self.storage_dir, name, "_anchor_point.txt"))
+            anchor_point = np.loadtxt(
+                join(self.storage_dir, name, "_anchor_point.txt")
+            )
             return anchor_point
 
     @ensure_directory_exists
